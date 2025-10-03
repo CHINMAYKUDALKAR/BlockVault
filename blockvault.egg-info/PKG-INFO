@@ -1,0 +1,145 @@
+Metadata-Version: 2.4
+Name: blockvault
+Version: 0.1.0
+Summary: BlockVault Phase 1 - Flask backend with MetaMask authentication via signature verification
+Author: ScriptXDemon
+License: MIT
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: Flask<4.0.0,>=3.0.0
+Requires-Dist: python-dotenv<2.0.0,>=1.0.0
+Requires-Dist: web3<7.0.0,>=6.15.0
+Requires-Dist: PyJWT<3.0.0,>=2.9.0
+Requires-Dist: pymongo<5.0.0,>=4.8.0
+Provides-Extra: dev
+Requires-Dist: pytest<9.0.0,>=8.0.0; extra == "dev"
+Requires-Dist: black<25.0.0,>=24.0.0; extra == "dev"
+Requires-Dist: flake8<8.0.0,>=7.0.0; extra == "dev"
+Requires-Dist: mypy<2.0.0,>=1.11.0; extra == "dev"
+Requires-Dist: types-PyJWT; extra == "dev"
+Requires-Dist: types-requests; extra == "dev"
+
+# BlockVault (Phase 1)
+
+Core backend skeleton providing MetaMask (Ethereum address) based authentication via message signing.
+
+## Features (Phase 1)
+- Flask backend
+- Nonce-based login flow with MetaMask signature verification (web3.py)
+- JWT issuance (HS256) for session auth
+- MongoDB persistence (users + nonces)
+- Basic health endpoint `/health`
+
+## Endpoints
+### `POST /auth/get_nonce`
+Request a nonce to sign.
+```json
+{
+	"address": "0xYourEthereumAddress"
+}
+```
+Response:
+```json
+{
+	"address": "0xYourEthereumAddress",
+	"nonce": "<random hex>",
+	"message": "BlockVault login nonce: <random hex>"
+}
+```
+
+### `POST /auth/login`
+Submit signature of the provided message.
+```json
+{
+	"address": "0xYourEthereumAddress",
+	"signature": "0xSignature"
+}
+```
+Response:
+```json
+{
+	"token": "<jwt>",
+	"address": "0xYourEthereumAddress"
+}
+```
+
+### `GET /auth/me`
+Requires header `Authorization: Bearer <jwt>`
+Response:
+```json
+{
+	"address": "0xYourEthereumAddress"
+}
+```
+
+## Running Locally
+### Quick Start (Makefile)
+```
+make dev            # create venv + install (editable) with dev deps
+cp .env.example .env
+make run-mem        # run using in-memory DB (no MongoDB needed)
+```
+
+Then test:
+```
+curl http://localhost:5000/health
+```
+
+### Manual Setup
+1. Create and populate `.env`:
+```
+cp .env.example .env
+# edit secrets
+```
+2. (Optional) Start local MongoDB or use MongoDB Atlas connection string in `MONGO_URI`.
+3. Install dependencies:
+```
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .[dev]
+```
+4. Run:
+```
+python app.py
+```
+5. Test endpoints with curl or Postman.
+
+If you see `ModuleNotFoundError: No module named 'flask'` you likely:
+- Forgot to install dependencies (run `make dev` or `pip install -e .[dev]` inside the venv), or
+- Are using a shell where the virtual environment is not activated (`source .venv/bin/activate`).
+
+
+## Simple curl Test
+```
+ADDRESS=0x0000000000000000000000000000000000000000
+curl -X POST http://localhost:5000/auth/get_nonce -H 'Content-Type: application/json' -d '{"address": "'$ADDRESS'"}'
+```
+(Sign message with MetaMask externally, then:)
+```
+curl -X POST http://localhost:5000/auth/login -H 'Content-Type: application/json' -d '{"address": "'$ADDRESS'", "signature": "0x..."}'
+```
+
+## Project Structure
+```
+blockvault/
+	api/
+		auth.py
+	core/
+		config.py
+		db.py
+		security.py
+	__init__.py
+app.py
+pyproject.toml
+.env.example
+```
+
+## Next Steps (Future Phases)
+- Protected endpoints requiring JWT
+- Refresh token / revoke strategy
+- File storage & encryption layer
+- Rate limiting & audit logs
+- Frontend integration
+
+---
+MIT License

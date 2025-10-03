@@ -1,0 +1,28 @@
+[restart] No existing process on port 5000
+[restart] Starting backend with ALLOW_DEV_TOKEN=1 MONGO_URI=mongodb://localhost:27017/blockvault
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://10.0.2.160:5000
+[33mPress CTRL+C to quit[0m
+127.0.0.1 - - [03/Oct/2025 20:02:49] "GET /health HTTP/1.1" 200 -
+127.0.0.1 - - [03/Oct/2025 20:03:02] "GET /health HTTP/1.1" 200 -
+127.0.0.1 - - [03/Oct/2025 20:03:02] "GET /health HTTP/1.1" 200 -
+127.0.0.1 - - [03/Oct/2025 20:03:04] "OPTIONS /auth/get_nonce HTTP/1.1" 200 -
+127.0.0.1 - - [03/Oct/2025 20:03:05] "POST /auth/get_nonce HTTP/1.1" 200 -
+127.0.0.1 - - [03/Oct/2025 20:03:08] "OPTIONS /auth/login HTTP/1.1" 200 -
+127.0.0.1 - - [03/Oct/2025 20:03:08] "POST /auth/login HTTP/1.1" 200 -
+127.0.0.1 - - [03/Oct/2025 20:03:08] "OPTIONS /files?limit=100 HTTP/1.1" 200 -
+127.0.0.1 - - [03/Oct/2025 20:03:08] "OPTIONS /files?limit=100 HTTP/1.1" 200 -
+127.0.0.1 - - [03/Oct/2025 20:03:08] "GET /files?limit=100 HTTP/1.1" 200 -
+127.0.0.1 - - [03/Oct/2025 20:03:08] "GET /files?limit=100 HTTP/1.1" 200 -
+127.0.0.1 - - [03/Oct/2025 20:20:49] "GET /health HTTP/1.1" 200 -
+127.0.0.1 - - [03/Oct/2025 20:20:49] "GET /health HTTP/1.1" 200 -
+127.0.0.1 - - [03/Oct/2025 20:20:57] "OPTIONS /auth/get_nonce HTTP/1.1" 200 -
+127.0.0.1 - - [03/Oct/2025 20:20:57] "POST /auth/get_nonce HTTP/1.1" 200 -
+127.0.0.1 - - [03/Oct/2025 20:21:00] "OPTIONS /auth/login HTTP/1.1" 200 -
+127.0.0.1 - - [03/Oct/2025 20:21:00] "POST /auth/login HTTP/1.1" 200 -
+127.0.0.1 - - [03/Oct/2025 20:21:01] "OPTIONS /files?limit=100 HTTP/1.1" 200 -
+127.0.0.1 - - [03/Oct/2025 20:21:01] "OPTIONS /files?limit=100 HTTP/1.1" 200 -
+127.0.0.1 - - [03/Oct/2025 20:21:01] "GET /files?limit=100 HTTP/1.1" 200 -
+127.0.0.1 - - [03/Oct/2025 20:21:01] "GET /files?limit=100 HTTP/1.1" 200 -

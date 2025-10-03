@@ -103,14 +103,17 @@ curl -X POST http://localhost:5000/auth/login -H 'Content-Type: application/json
 blockvault/
 	api/
 		auth.py
+		files.py
 	core/
 		config.py
 		db.py
 		security.py
+		crypto_cli.py
 	__init__.py
 app.py
 pyproject.toml
 .env.example
+blockvault_crypto/  (Rust AES-256-GCM CLI)
 ```
 
 ## Next Steps (Future Phases)
@@ -120,5 +123,80 @@ pyproject.toml
 - Rate limiting & audit logs
 - Frontend integration
 
+## Phase 2 (In Progress) – File Encryption API
+
+Rust-powered AES-256-GCM CLI integrated via subprocess.
+
+### Upload File
+`POST /files` (multipart/form-data)
+Fields:
+- `file`: binary file
+- `key`: passphrase used to derive encryption key (PBKDF2)
+- `aad` (optional): associated data bound into authentication tag
+
+Auth: `Authorization: Bearer <jwt>` required.
+
+Response:
+```json
+{ "file_id": "<id>", "name": "original.ext" }
+```
+
+### Download File
+`GET /files/<file_id>?key=<passphrase>`
+Headers alternative: `X-File-Key: <passphrase>`
+
+Returns: decrypted file as attachment if key correct and user owns file.
+
+### Storage
+Encrypted blobs stored under `storage/` (override via env `FILE_STORAGE_DIR`).
+
+### Rust Binary
+Auto-detected at `blockvault_crypto/target/release/blockvault_crypto` or built on demand if Cargo is available. Override path with `BLOCKVAULT_CRYPTO_BIN`.
+
 ---
 MIT License
+
+---
+
+## Persistent Storage (MongoDB)
+
+During earlier development we used an in-memory fallback (`MONGO_URI=memory://...`). That data is lost on every backend restart, which caused 404s for verify/download in the UI after restarts. To persist files metadata, run MongoDB and point `MONGO_URI` at it.
+
+### Quick Local Mongo (Docker Compose)
+
+```
+docker compose up -d mongo
+```
+
+Or start everything (Mongo + backend) with:
+
+```
+docker compose up --build
+```
+
+The compose file sets `MONGO_URI=mongodb://mongo:27017/blockvault` for the backend container.
+
+### Manual (Codespaces / Local)
+
+1. Run Mongo in the dev container:
+	```
+	docker run -d --name blockvault-mongo -p 27017:27017 mongo:7
+	```
+2. Export or set in `.env`:
+	```
+	MONGO_URI=mongodb://localhost:27017/blockvault
+	```
+3. Start backend (stable runner):
+	```
+	make run-stable
+	```
+
+### Verifying Persistence
+
+Upload a file, note its `file_id`, restart backend, then list files again—record should remain when using real Mongo.
+
+If you still see 404 after restart, confirm:
+```
+curl -s http://localhost:5000/debug/files
+```
+`count` should be > 0.

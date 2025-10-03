@@ -12,3 +12,4 @@ blockvault/core/db.py
 blockvault/core/memory_db.py
 blockvault/core/security.py
 tests/test_auth_flow.py
+tests/test_files_flow.py

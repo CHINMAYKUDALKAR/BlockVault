@@ -49,6 +49,20 @@ class MemoryCollection:
                 del self._store[key]
                 break
 
+    # Minimal insert_one to mimic pymongo API used in tests
+    class _InsertResult:
+        def __init__(self, inserted_id: str):
+            self.inserted_id = inserted_id
+
+    def insert_one(self, doc: Dict[str, Any]):  # type: ignore
+        key = f"{int(time.time()*1000)}_{len(self._store)}"
+        # Simulate ObjectId with hex-ish token
+        doc_id = key
+        stored = dict(doc)
+        stored["_id"] = doc_id
+        self._store[key] = stored
+        return MemoryCollection._InsertResult(doc_id)
+
 
 class MemoryDB:
     def __init__(self):

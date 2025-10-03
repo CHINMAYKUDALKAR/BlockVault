@@ -12,6 +12,7 @@ help:
 	@echo "  dev         - install dev dependencies (editable)"
 	@echo "  run         - run app with current .env"
 	@echo "  run-mem     - run app with in-memory DB"
+	@echo "  run-stable  - run app (no reloader) stable single process"
 	@echo "  test        - run pytest"
 	@echo "  lint        - run flake8 and mypy"
 	@echo "  format      - run black"
@@ -31,6 +32,9 @@ run: venv
 
 run-mem: venv
 	MONGO_URI=memory://dev $(PYTHON) app.py
+
+run-stable: venv
+	$(PYTHON) scripts/run_backend.py
 
 test: venv
 	$(PYTHON) -m pytest -q

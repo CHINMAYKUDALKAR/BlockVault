@@ -13,6 +13,10 @@ class Config:
     secret_key: str
     jwt_secret: str
     jwt_exp_minutes: int
+    ipfs_api_url: str | None = None
+    ipfs_api_token: str | None = None
+    ipfs_enabled: bool = False
+    ipfs_gateway_url: str | None = None
     app_name: str = "BlockVault"
 
 
@@ -23,6 +27,10 @@ def load_config() -> Config:
     secret_key = os.getenv("SECRET_KEY", "dev-secret-key-change")
     jwt_secret = os.getenv("JWT_SECRET", "dev-jwt-secret-change")
     jwt_exp_minutes = int(os.getenv("JWT_EXP_MINUTES", "60"))
+    ipfs_api_url = os.getenv("IPFS_API_URL")
+    ipfs_api_token = os.getenv("IPFS_API_TOKEN")
+    ipfs_enabled = os.getenv("IPFS_ENABLED", "false").lower() in {"1", "true", "yes"}
+    ipfs_gateway_url = os.getenv("IPFS_GATEWAY_URL")
     return Config(
         env=env,
         debug=debug,
@@ -30,4 +38,8 @@ def load_config() -> Config:
         secret_key=secret_key,
         jwt_secret=jwt_secret,
         jwt_exp_minutes=jwt_exp_minutes,
+        ipfs_api_url=ipfs_api_url,
+        ipfs_api_token=ipfs_api_token,
+        ipfs_enabled=ipfs_enabled,
+        ipfs_gateway_url=ipfs_gateway_url,
     )

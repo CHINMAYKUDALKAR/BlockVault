@@ -5,6 +5,8 @@ import { useAuthStore } from '../state/auth';
 import { useToastStore } from '../state/toastHost';
 import { useNetworkStore } from '../state/network';
 import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
+import { Modal } from '../components/ui/Modal';
 import { Icon } from '../components/icons';
 
 interface ProfileResponse {
@@ -69,6 +71,9 @@ export const SharingSection: React.FC = () => {
   const [outgoing, setOutgoing] = useState<OutgoingShare[]>([]);
   const [loading, setLoading] = useState(false);
   const [savingKey, setSavingKey] = useState(false);
+  // Incoming share download modal (Option A implementation)
+  const [dlModal, setDlModal] = useState<{ open: boolean; share?: IncomingShare }>(() => ({ open: false }));
+  const [dlPass, setDlPass] = useState('');
 
   const authorizedHeaders = useMemo(() => ({ headers: { Authorization: `Bearer ${jwt}` } }), [jwt]);
 
@@ -173,6 +178,49 @@ export const SharingSection: React.FC = () => {
     });
   };
 
+  const openDownload = (share: IncomingShare) => {
+    setDlPass('');
+    setDlModal({ open: true, share });
+  };
+
+  const doDownload = async (share: IncomingShare, passphrase: string) => {
+    const fid = share.file_id;
+    const name = share.file_name || fid;
+    incNet();
+    try {
+      const url = apiUrl(`/files/${fid}?key=${encodeURIComponent(passphrase)}`);
+      const resp = await fetch(url, { headers: { Authorization: `Bearer ${jwt}` } });
+      if (!resp.ok) {
+        let msg = `Download failed (${resp.status})`;
+        try { const j = await resp.json(); if (j?.error) msg = j.error; } catch {}
+        if (resp.status === 400) msg = 'Bad / incorrect passphrase';
+        if (resp.status === 404) msg = 'File not found or share invalid';
+        if (resp.status === 410) msg = 'Encrypted blob missing on server';
+        toast.push({ type: 'error', msg });
+        return;
+      }
+      const blob = await resp.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast.push({ type: 'success', msg: 'Downloaded' });
+    } catch (e: any) {
+      toast.push({ type: 'error', msg: 'Download error' });
+    } finally {
+      decNet();
+    }
+  };
+
+  const submitDownload = async () => {
+    if (!dlModal.share) return;
+    const pass = dlPass.trim();
+    if (!pass) { toast.push({ type: 'error', msg: 'Passphrase required' }); return; }
+    await doDownload(dlModal.share, pass);
+    setDlModal({ open: false });
+  };
+
   return (
     <section className="space-y-6">
       <div className="flex items-center justify-between">
@@ -247,8 +295,9 @@ export const SharingSection: React.FC = () => {
               <div className="text-[11px] text-text-secondary/80 bg-background-secondary/60 border border-border/40 rounded-md p-2 font-mono break-all">
                 {share.encrypted_key ?? '—'}
               </div>
-              <div className="flex justify-end">
-                <Button size="sm" variant="secondary" onClick={() => copy(share.encrypted_key)} leftIcon={<Icon name="copy" size={12} />}>Copy encrypted key</Button>
+              <div className="flex justify-end gap-2">
+                <Button size="sm" variant="secondary" onClick={() => copy(share.encrypted_key)} leftIcon={<Icon name="copy" size={12} />}>Copy</Button>
+                <Button size="sm" variant="primary" onClick={() => openDownload(share)} leftIcon={<Icon name="download" size={12} />}>Download</Button>
               </div>
             </div>
           ))}
@@ -286,6 +335,23 @@ export const SharingSection: React.FC = () => {
           ))}
         </div>
       </div>
+      <Modal
+        open={dlModal.open}
+        onClose={() => setDlModal({ open: false })}
+        title={`Download ${dlModal.share?.file_name || dlModal.share?.file_id || ''}`.trim()}
+        footer={<>
+          <Button size="sm" variant="secondary" onClick={() => setDlModal({ open: false })}>Cancel</Button>
+          <Button size="sm" variant="primary" onClick={submitDownload}>Download</Button>
+        </>}
+      >
+        <div className="space-y-3">
+          <p className="text-[11px] leading-relaxed">
+            1. Copy the encrypted key from the share card. 2. Decrypt it locally with your RSA private key (offline or CLI). 3. Paste the resulting plaintext passphrase below to retrieve the file.
+          </p>
+          <Input data-autofocus label="Decrypted passphrase" value={dlPass} onChange={e => setDlPass(e.target.value)} placeholder="plaintext passphrase" revealToggle />
+          <p className="text-[10px] text-text-secondary/60">We never store this passphrase; it is sent once to derive the file contents.</p>
+        </div>
+      </Modal>
     </section>
   );
 };

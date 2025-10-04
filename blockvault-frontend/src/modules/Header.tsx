@@ -20,10 +20,7 @@ export const Header: React.FC = () => {
   const net = useNetworkStore();
   const [copied, setCopied] = useState(false);
   const [devAddr, setDevAddr] = useState('');
-  const [iframe, setIframe] = useState(false);
-  const [chainId, setChainId] = useState<string | null>(null);
-  const [diagOpen, setDiagOpen] = useState(false);
-  const [accountsSnap, setAccountsSnap] = useState<string[]>([]);
+  // chainId and diagnostics removed for production cleanup
   // API health removed from display
   const toast = useToastStore();
 
@@ -38,34 +35,17 @@ export const Header: React.FC = () => {
   };
 
   useEffect(() => {
-    try { setIframe(window.top !== window.self); } catch { setIframe(true); }
     const eth = (window as any).ethereum;
-    if (eth?.request) {
-      eth.request({ method: 'eth_chainId' }).then((cid:string) => setChainId(cid)).catch(()=>{});
-      eth.request({ method: 'eth_accounts' }).then((accs:string[]) => setAccountsSnap(accs||[])).catch(()=>{});
-    }
     if (eth?.on) {
-      const handleAccounts = (accs: string[]) => {
-        if (accs && accs.length) {
-          try { setAddress(ethers.getAddress(accs[0])); } catch { /* ignore */ }
-        }
-      };
-      const handleChain = (cid: string) => setChainId(cid);
+      const handleAccounts = (accs: string[]) => { if (accs?.length) { try { setAddress(ethers.getAddress(accs[0])); } catch {} } };
       eth.on('accountsChanged', handleAccounts);
-      eth.on('chainChanged', handleChain);
-      // Periodic refresh of accounts snapshot for diagnostics (dev only)
-      const poll = setInterval(()=>{
-        eth.request({ method:'eth_accounts'}).then((a:string[])=> setAccountsSnap(a||[])).catch(()=>{});
-      }, 6000);
       return () => {
         try {
           eth.removeListener?.('accountsChanged', handleAccounts);
-          eth.removeListener?.('chainChanged', handleChain);
-          clearInterval(poll);
-        } catch { /* noop */ }
+        } catch {}
       };
     }
-  }, []);
+  }, [setAddress]);
 
   const connect = useCallback(async () => {
     const eth = (window as any).ethereum;
@@ -217,7 +197,7 @@ export const Header: React.FC = () => {
       <div className="flex items-center gap-4">
         <Logo size={42} text />
       </div>
-      <div className="flex items-center gap-3 flex-wrap">
+  <div className="flex items-center gap-3 flex-wrap">
         {!address && (window as any).ethereum && (
           <Button size="sm" variant="primary" onClick={connect}>Connect</Button>
         )}
@@ -248,33 +228,7 @@ export const Header: React.FC = () => {
           </>
         )}
       </div>
-      {(iframe || !(window as any).ethereum) && (
-        <div className="absolute left-1/2 -translate-x-1/2 -bottom-6 mt-1 text-[10px] px-2 py-1 rounded bg-accent-red/20 border border-accent-red/40 text-accent-red flex items-center gap-2">
-          {iframe ? 'Running in iframe: open in external tab for MetaMask.' : 'No provider detected. Using dev token path.'}
-          {chainId && <span className="text-accent-blue">chain {chainId}</span>}
-        </div>
-      )}
-      <button
-        onClick={()=>setDiagOpen(o=>!o)}
-        className="absolute top-full mt-2 right-4 text-[10px] px-2 py-1 rounded bg-background-tertiary/60 border border-border/50 hover:border-accent-blue/60 hover:text-accent-blue transition"
-      >{diagOpen? 'Hide Diagnostics':'Show Diagnostics'}</button>
-      {diagOpen && (
-        <div className="absolute top-full right-4 mt-10 w-80 p-3 rounded-md bg-background-secondary/80 backdrop-blur border border-border/60 text-[11px] space-y-2 shadow-lg max-h-96 overflow-auto">
-          <div className="font-semibold text-text-primary/80">Diagnostics</div>
-          <div className="grid grid-cols-3 gap-x-2 gap-y-1">
-            <span className="text-text-secondary/60">iframe</span><span className="col-span-2">{String(iframe)}</span>
-            <span className="text-text-secondary/60">provider</span><span className="col-span-2">{(window as any).ethereum? 'detected':'missing'}</span>
-            <span className="text-text-secondary/60">chainId</span><span className="col-span-2">{chainId || '—'}</span>
-            <span className="text-text-secondary/60">accounts</span><span className="col-span-2 break-all">{accountsSnap.length? accountsSnap.join(', '): '[]'}</span>
-            <span className="text-text-secondary/60">addr (state)</span><span className="col-span-2 break-all">{address || '—'}</span>
-          </div>
-          <div className="space-y-1">
-            <div className="text-text-secondary/70 leading-snug">If provider is missing, open this URL in a normal desktop browser (Chrome/Brave) with MetaMask installed. Codespaces preview iframing blocks injection.</div>
-            <div className="text-text-secondary/70 leading-snug">If accounts array is empty after Connect, unlock MetaMask and retry.</div>
-            <div className="text-text-secondary/70 leading-snug">If a request is already pending, open the MetaMask popup manually.</div>
-          </div>
-        </div>
-      )}
+      {/* No diagnostics or provider banner in production */}
     </header>
   );
 };

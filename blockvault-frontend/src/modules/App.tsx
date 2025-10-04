@@ -6,25 +6,13 @@ import { useAuthStore } from '../state/auth';
 import { ToastHost } from '../state/toastHost';
 import { Header } from './Header';
 import { TopProgress } from '../components/ui/TopProgress';
-// Diagnostic render tracker (dev only) to trace potential infinite re-render source
-let __renderCount = 0;
-function RenderProbe() {
-  __renderCount++;
-  if (__renderCount % 200 === 0) {
-    // Log a lightweight stack to see repeating pattern
-    // eslint-disable-next-line no-console
-    console.warn('[diag] High render count', __renderCount, new Error().stack?.split('\n').slice(0,3).join('\n'));
-  }
-  return null;
-}
 
 export const App: React.FC = () => {
   const { jwt } = useAuthStore();
   return (
     <div className="min-h-screen w-full relative backdrop-grid flex flex-col">
-    <TopProgress />
-      <RenderProbe />
-      <Header />
+  <TopProgress />
+  <Header />
       <main className="flex-1 w-full px-4 md:px-8 pb-16 flex justify-center">
         <div className="w-full max-w-7xl">
           <div className="mb-10 max-w-3xl mx-auto text-center">

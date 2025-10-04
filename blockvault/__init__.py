@@ -5,6 +5,7 @@ from .core.config import load_config
 from .core.db import init_db
 from .api.auth import bp as auth_bp
 from .api.files import bp as files_bp
+from .api.users import bp as users_bp
 
 def create_app() -> Flask:
     app = Flask(__name__)
@@ -20,11 +21,25 @@ def create_app() -> Flask:
         IPFS_API_URL=cfg.ipfs_api_url,
         IPFS_API_TOKEN=cfg.ipfs_api_token,
         IPFS_GATEWAY_URL=cfg.ipfs_gateway_url,
+        ETH_RPC_URL=cfg.eth_rpc_url,
+        ROLE_REGISTRY_ADDRESS=cfg.role_registry_address,
+        CORS_ALLOWED_ORIGINS=cfg.cors_allowed_origins,
     )
 
     init_db(app)
-    # Enable CORS (development permissive). For production, restrict origins.
-    CORS(app, resources={r"/*": {"origins": "*"}}, expose_headers=["Authorization","Content-Type"], supports_credentials=False)
+    # Enable CORS with optional origin overrides for deployment.
+    allowed_origins = cfg.cors_allowed_origins or "*"
+    if allowed_origins.strip() in {"*", ""}:
+        cors_config = {r"/*": {"origins": "*"}}
+    else:
+        origin_list = [o.strip() for o in allowed_origins.split(",") if o.strip()]
+        cors_config = {r"/*": {"origins": origin_list}}
+    CORS(
+        app,
+        resources=cors_config,
+        expose_headers=["Authorization", "Content-Type"],
+        supports_credentials=False,
+    )
 
     # Standard JSON error responses
     @app.errorhandler(400)
@@ -42,6 +57,18 @@ def create_app() -> Flask:
 
     app.register_blueprint(auth_bp, url_prefix="/auth")
     app.register_blueprint(files_bp, url_prefix="/files")
+    app.register_blueprint(users_bp, url_prefix="/users")
+
+    @app.get('/auth/_routes')
+    def auth_routes():  # lightweight diagnostics
+        auth_rules = []
+        for r in app.url_map.iter_rules():  # type: ignore
+            if str(r).startswith('/auth'):
+                auth_rules.append({
+                    'rule': str(r),
+                    'methods': sorted(m for m in r.methods if m in {'GET','POST','DELETE','PUT','PATCH'}),
+                })
+        return {'auth_routes': auth_rules, 'count': len(auth_rules)}
 
     @app.get("/health")
     def health():
@@ -64,6 +91,12 @@ def create_app() -> Flask:
                 "/files (GET list)",
                 "/files/<id> (DELETE)",
                 "/files/<id>/verify (GET verify integrity)",
+                "/files/<id>/share (POST create/update share)",
+                "/files/shared (GET shares received)",
+                "/files/shares/outgoing (GET shares sent)",
+                "/files/shares/<id> (DELETE share)",
+                "/users/profile (GET role & sharing key status)",
+                "/users/public_key (POST/DELETE manage sharing key)",
                 "/debug/files (DEV only raw listing)",
             ],
         })

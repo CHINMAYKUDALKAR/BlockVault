@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Button } from './Button';
+import { Icon } from '../icons';
 
 export interface BVFileItem {
   file_id: string;
@@ -16,6 +17,7 @@ interface FileCardProps {
   onDownload: () => Promise<void> | void;
   onDelete: () => Promise<void> | void;
   onVerify: () => Promise<void> | void;
+  onShare?: () => Promise<void> | void;
   onCopyCid?: () => void;
   onCopyHash?: () => void;
   compact?: boolean;
@@ -28,7 +30,7 @@ function fmtSize(bytes: number) {
   return `${(kb / 1024).toFixed(2)} MB`;
 }
 
-export const FileCard: React.FC<FileCardProps> = ({ f, onDownload, onDelete, onVerify, onCopyCid, onCopyHash, compact }) => {
+export const FileCard: React.FC<FileCardProps> = ({ f, onDownload, onDelete, onVerify, onShare, onCopyCid, onCopyHash, compact }) => {
   const [expanded, setExpanded] = useState(!compact);
   return (
     <div className="group relative p-4 rounded-xl border border-border/40 bg-background-tertiary/30 backdrop-blur-sm hover:border-accent-blue/60 hover:shadow-[0_0_0_1px_#00C0FF] transition grid grid-cols-[auto_1fr_auto] gap-4 items-start">
@@ -54,9 +56,12 @@ export const FileCard: React.FC<FileCardProps> = ({ f, onDownload, onDelete, onV
       </div>
       <div className="flex flex-col items-end gap-2">
         <div className="flex gap-1">
-          <Button size="sm" variant="outline" onClick={onDownload} title="Download" leftIcon={<span>⬇️</span>} />
-          <Button size="sm" variant="danger" onClick={onDelete} title="Delete" leftIcon={<span>🗑️</span>} />
-          <Button size="sm" variant="secondary" onClick={onVerify} title="Verify" leftIcon={<span>✔️</span>} />
+          {onShare && (
+            <Button size="sm" variant="secondary" onClick={onShare} title="Share" leftIcon={<Icon name="share" size={14} className="text-accent-blue" />} />
+          )}
+          <Button size="sm" variant="outline" onClick={onDownload} title="Download" leftIcon={<Icon name="download" size={14} className="text-accent-blue" />} />
+          <Button size="sm" variant="danger" onClick={onDelete} title="Delete" leftIcon={<Icon name="delete" size={14} className="text-accent-red" />} />
+          <Button size="sm" variant="secondary" onClick={onVerify} title="Verify" leftIcon={<Icon name="verify" size={14} className="text-accent-green" />} />
           <button
             className="text-[10px] text-text-secondary hover:text-accent-blue ml-1 px-1"
             onClick={() => setExpanded(e => !e)}

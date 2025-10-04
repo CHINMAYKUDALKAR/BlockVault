@@ -1,13 +1,15 @@
 import React, { useEffect } from 'react';
 import { create } from 'zustand';
 
+// Definitive toast store & host (legacy duplicates removed)
 interface Toast { id: string; msg: string; type: 'info'|'error'|'success'; created?: number; }
-interface ToastState { toasts: Toast[]; push: (t: Omit<Toast,'id'>) => void; remove: (id: string)=>void; }
+interface ToastState { toasts: Toast[]; push: (t: Omit<Toast,'id'>) => void; remove: (id: string)=>void; clear: () => void; }
 
 export const useToastStore = create<ToastState>((set) => ({
   toasts: [],
   push: (t) => set(s => ({ toasts: [...s.toasts, { ...t, id: (crypto as any).randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2), created: Date.now() }] })),
   remove: (id) => set(s => ({ toasts: s.toasts.filter(x => x.id !== id) })),
+  clear: () => set({ toasts: [] })
 }));
 
 export const ToastHost: React.FC = () => {

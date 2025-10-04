@@ -49,6 +49,12 @@ class MemoryCollection:
                 del self._store[key]
                 break
 
+    def find(self, flt: Optional[Dict[str, Any]] = None):
+        flt = flt or {}
+        for doc in self._store.values():
+            if self._match(doc, flt):
+                yield doc.copy()
+
     # Minimal insert_one to mimic pymongo API used in tests
     class _InsertResult:
         def __init__(self, inserted_id: str):

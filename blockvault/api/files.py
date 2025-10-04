@@ -1,11 +1,18 @@
 from __future__ import annotations
+
+import base64
+import io
 import os
 import time
+import traceback
 import hashlib
-from typing import List, Dict, Any
-from pathlib import Path
+from typing import Dict, Any, List, Optional, Tuple
+
 from flask import Blueprint, request, abort, send_file
-import io, os, traceback
+from web3 import Web3
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+
 from ..core.security import require_auth
 from ..core.db import get_db
 from ..core.crypto_cli import (
@@ -15,6 +22,7 @@ from ..core.crypto_cli import (
     generate_encrypted_filename,
 )
 from ..core import ipfs as ipfs_mod
+from ..core.rbac import Role, ensure_role
 
 bp = Blueprint("files", __name__)
 
@@ -23,9 +31,89 @@ def _files_collection():
     return get_db()["files"]
 
 
+def _shares_collection():
+    return get_db()["shares"]
+
+
+def _users_collection():
+    return get_db()["users"]
+
+
+def _canonical_file_id(rec: Dict[str, Any], fallback: str) -> str:
+    if rec.get("_id") is not None:
+        return str(rec["_id"])
+    return fallback
+
+
+def _lookup_file(file_id: str) -> Tuple[Dict[str, Any], str]:
+    coll = _files_collection()
+    candidates: List[Any] = []
+    try:
+        from bson import ObjectId  # type: ignore
+
+        candidates.append(ObjectId(file_id))
+    except Exception:
+        pass
+    candidates.append(file_id)
+    for candidate in candidates:
+        rec = coll.find_one({"_id": candidate})
+        if rec:
+            return rec, _canonical_file_id(rec, file_id)
+    abort(404, "file not found")
+
+
+def _maybe_get_file(file_id: str) -> Optional[Dict[str, Any]]:
+    coll = _files_collection()
+    candidates: List[Any] = []
+    try:
+        from bson import ObjectId  # type: ignore
+
+        candidates.append(ObjectId(file_id))
+    except Exception:
+        pass
+    candidates.append(file_id)
+    for candidate in candidates:
+        rec = coll.find_one({"_id": candidate})
+        if rec:
+            return rec
+    return None
+
+
+def _load_public_key(pem: str):
+    try:
+        return serialization.load_pem_public_key(pem.encode("utf-8"))
+    except Exception as exc:
+        abort(400, f"invalid recipient public key: {exc}")
+
+
+def _serialize_share(doc: Dict[str, Any], include_encrypted: bool = True) -> Dict[str, Any]:
+    base = {
+        "share_id": str(doc.get("_id")),
+        "file_id": doc.get("file_id"),
+        "owner": doc.get("owner"),
+        "recipient": doc.get("recipient"),
+        "encrypted_key": doc.get("encrypted_key") if include_encrypted else None,
+        "note": doc.get("note"),
+        "created_at": doc.get("created_at"),
+        "expires_at": doc.get("expires_at"),
+    }
+    if "file_name" in doc:
+        base["file_name"] = doc.get("file_name")
+    if "file_size" in doc:
+        base["file_size"] = doc.get("file_size")
+    if "sha256" in doc:
+        base["sha256"] = doc.get("sha256")
+    if "cid" in doc:
+        base["cid"] = doc.get("cid")
+    if "gateway_url" in doc:
+        base["gateway_url"] = doc.get("gateway_url")
+    return base
+
+
 @bp.post("/", strict_slashes=False)
 @require_auth
 def upload_file():  # type: ignore
+    ensure_role(Role.OWNER)
     if "file" not in request.files:
         abort(400, "file part required (multipart/form-data)")
     up_file = request.files["file"]
@@ -91,17 +179,19 @@ def download_file(file_id: str):  # type: ignore
     if not key:
         abort(400, "key required (query ?key= or X-File-Key header)")
 
-    # Support memory DB (string id) and real Mongo ObjectId
-    oid = file_id
-    try:  # attempt to convert; if fail, keep string
-        from bson import ObjectId  # type: ignore
-        oid = ObjectId(file_id)  # type: ignore
-    except Exception:
-        pass
-
-    rec = _files_collection().find_one({"_id": oid, "owner": getattr(request, "address")})
-    if not rec:
-        abort(404, "file not found")
+    rec, canonical_id = _lookup_file(file_id)
+    owner = rec.get("owner")
+    requester = getattr(request, "address")
+    if owner == requester:
+        ensure_role(Role.OWNER)
+    else:
+        ensure_role(Role.VIEWER)
+        share = _shares_collection().find_one({"file_id": canonical_id, "recipient": requester})
+        if not share:
+            abort(404, "file not found")
+        expires_at = share.get("expires_at")
+        if expires_at and int(time.time() * 1000) > int(expires_at):
+            abort(403, "share expired")
 
     storage_dir = ensure_storage_dir()
     enc_path = storage_dir / rec["enc_filename"]
@@ -154,6 +244,7 @@ def download_file(file_id: str):  # type: ignore
 @bp.get("/", strict_slashes=False)
 @require_auth
 def list_files():  # type: ignore
+    ensure_role(Role.OWNER)
     # Simple listing for the owner; optional limit & after (created_at cursor)
     try:
         limit = int(request.args.get("limit", "50"))
@@ -236,6 +327,7 @@ def list_files():  # type: ignore
 @bp.delete("/<file_id>", strict_slashes=False)
 @require_auth
 def delete_file(file_id: str):  # type: ignore
+    ensure_role(Role.OWNER)
     owner = getattr(request, "address")
     oid = file_id
     try:
@@ -275,6 +367,7 @@ def delete_file(file_id: str):  # type: ignore
 @bp.get("/<file_id>/verify", strict_slashes=False)
 @require_auth
 def verify_file(file_id: str):  # type: ignore
+    ensure_role(Role.OWNER)
     owner = getattr(request, "address")
     oid = file_id
     try:
@@ -303,3 +396,192 @@ def verify_file(file_id: str):  # type: ignore
         "sha256": rec.get("sha256"),
     }
     return result
+
+
+@bp.post("/<file_id>/share", strict_slashes=False)
+@require_auth
+def share_file(file_id: str):  # type: ignore
+    ensure_role(Role.OWNER)
+    owner = getattr(request, "address")
+    file_rec, canonical_id = _lookup_file(file_id)
+    if file_rec.get("owner") != owner:
+        abort(403, "only the file owner can share")
+
+    data = request.get_json(silent=True) or {}
+    recipient = data.get("recipient")
+    passphrase = data.get("passphrase")
+    note = (data.get("note") or "").strip() or None
+    expires_at = data.get("expires_at")
+
+    if not recipient or not isinstance(recipient, str):
+        abort(400, "recipient address required")
+    if not passphrase or not isinstance(passphrase, str):
+        abort(400, "passphrase required")
+    if note and len(note) > 280:
+        abort(400, "note too long (max 280 chars)")
+
+    try:
+        recipient_addr = Web3.to_checksum_address(recipient)
+    except Exception:
+        abort(400, "invalid recipient address")
+    if recipient_addr == owner:
+        abort(400, "cannot share with yourself")
+
+    recipient_doc = _users_collection().find_one({"address": recipient_addr})
+    pub_pem = recipient_doc.get("sharing_pubkey") if recipient_doc else None
+    if not pub_pem:
+        abort(400, "recipient has not registered a sharing public key")
+
+    public_key = _load_public_key(pub_pem)
+    encrypted_bytes = public_key.encrypt(
+        passphrase.encode("utf-8"),
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None,
+        ),
+    )
+    encrypted_b64 = base64.b64encode(encrypted_bytes).decode("utf-8")
+
+    now_ms = int(time.time() * 1000)
+    expires_val: Optional[int] = None
+    if expires_at is not None:
+        try:
+            expires_val = int(expires_at)
+        except (TypeError, ValueError):
+            abort(400, "expires_at must be an integer timestamp (ms)")
+
+    share_filter = {"file_id": canonical_id, "owner": owner, "recipient": recipient_addr}
+    share_doc = {
+        **share_filter,
+        "encrypted_key": encrypted_b64,
+        "note": note,
+        "expires_at": expires_val,
+        "file_name": file_rec.get("original_name"),
+        "file_size": file_rec.get("size"),
+        "sha256": file_rec.get("sha256"),
+        "cid": file_rec.get("cid"),
+        "gateway_url": ipfs_mod.gateway_url(file_rec.get("cid")) if file_rec.get("cid") else None,
+    }
+
+    coll = _shares_collection()
+    existing = coll.find_one(share_filter)
+    if existing:
+        coll.update_one(share_filter, {"$set": {**share_doc, "updated_at": now_ms}})
+        result_doc = coll.find_one(share_filter) or {**existing, **share_doc}
+        result_doc.setdefault("created_at", existing.get("created_at", now_ms))
+    else:
+        share_doc["created_at"] = now_ms
+        insert_result = coll.insert_one(share_doc)
+        result_doc = coll.find_one({"_id": getattr(insert_result, "inserted_id", None)}) or share_doc
+
+    return _serialize_share(result_doc, include_encrypted=True)
+
+
+def _collect_shares(filter_query: Dict[str, Any]) -> List[Dict[str, Any]]:
+    coll = _shares_collection()
+    docs: List[Dict[str, Any]] = []
+    try:
+        from pymongo.collection import Collection  # type: ignore
+
+        if isinstance(coll, Collection):  # type: ignore[arg-type]
+            docs = list(coll.find(filter_query))
+        else:
+            docs = list(coll.find(filter_query))  # type: ignore[call-arg]
+    except Exception as exc:
+        abort(500, f"failed to fetch shares: {exc}")
+    return docs
+
+
+def _merge_metadata(doc: Dict[str, Any]) -> Dict[str, Any]:
+    metadata = dict(doc)
+    if not metadata.get("file_name") or not metadata.get("file_size"):
+        rec = _maybe_get_file(metadata.get("file_id", ""))
+        if rec:
+            metadata.setdefault("file_name", rec.get("original_name"))
+            metadata.setdefault("file_size", rec.get("size"))
+            metadata.setdefault("sha256", rec.get("sha256"))
+            metadata.setdefault("cid", rec.get("cid"))
+            metadata.setdefault(
+                "gateway_url",
+                ipfs_mod.gateway_url(rec.get("cid")) if rec.get("cid") else None,
+            )
+    return metadata
+
+
+def _get_share_by_id(share_id: str) -> Optional[Dict[str, Any]]:
+    coll = _shares_collection()
+    candidates: List[Any] = []
+    try:
+        from bson import ObjectId  # type: ignore
+
+        candidates.append(ObjectId(share_id))
+    except Exception:
+        pass
+    candidates.append(share_id)
+    for candidate in candidates:
+        doc = coll.find_one({"_id": candidate})
+        if doc:
+            return doc
+    # Last resort: iterate and compare stringified ids (memory backend)
+    try:
+        for doc in coll.find({}):
+            if str(doc.get("_id")) == share_id:
+                return doc
+    except Exception:
+        pass
+    return None
+
+
+@bp.get("/shared", strict_slashes=False)
+@require_auth
+def list_shared_with_me():  # type: ignore
+    ensure_role(Role.VIEWER)
+    address = getattr(request, "address")
+    now_ms = int(time.time() * 1000)
+    docs = _collect_shares({"recipient": address})
+    results: List[Dict[str, Any]] = []
+    for doc in docs:
+        expires_at = doc.get("expires_at")
+        if expires_at and now_ms > int(expires_at):
+            continue
+        metadata = _merge_metadata(doc)
+        results.append(_serialize_share(metadata, include_encrypted=True))
+    return {"shares": results}
+
+
+@bp.get("/shares/outgoing", strict_slashes=False)
+@require_auth
+def list_outgoing_shares():  # type: ignore
+    ensure_role(Role.OWNER)
+    owner = getattr(request, "address")
+    docs = _collect_shares({"owner": owner})
+    results = [_serialize_share(_merge_metadata(doc), include_encrypted=False) for doc in docs]
+    return {"shares": results}
+
+
+@bp.delete("/shares/<share_id>", strict_slashes=False)
+@require_auth
+def revoke_share(share_id: str):  # type: ignore
+    address = getattr(request, "address")
+    target = _get_share_by_id(share_id)
+    if not target:
+        abort(404, "share not found")
+
+    if target.get("owner") != address and target.get("recipient") != address:
+        ensure_role(Role.ADMIN)
+    coll = _shares_collection()
+    delete_filter: Dict[str, Any]
+    if target.get("_id") is not None:
+        delete_filter = {"_id": target.get("_id")}
+    else:
+        delete_filter = {
+            "file_id": target.get("file_id"),
+            "owner": target.get("owner"),
+            "recipient": target.get("recipient"),
+        }
+    coll.delete_one(delete_filter)
+    return {
+        "status": "revoked",
+        "share_id": share_id,
+    }

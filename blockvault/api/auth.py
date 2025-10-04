@@ -6,6 +6,7 @@ from web3 import Web3
 from eth_account.messages import encode_defunct
 from ..core.db import get_db
 from ..core.security import generate_jwt, require_auth
+from ..core.rbac import role_name
 
 bp = Blueprint("auth", __name__)
 
@@ -94,5 +95,9 @@ def login():
 def me():  # type: ignore
     # request.address is set by require_auth
     from flask import request as _req
-
-    return {"address": getattr(_req, "address")}
+    role = getattr(_req, "role", None)
+    return {
+        "address": getattr(_req, "address"),
+        "role": role_name(role) if role is not None else "unknown",
+        "role_value": int(role) if isinstance(role, int) else None,
+    }

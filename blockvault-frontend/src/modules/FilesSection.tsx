@@ -5,6 +5,10 @@ import { useToastStore } from '../state/toastHost';
 import { useAuthStore } from '../state/auth';
 import { Button } from '../components/ui/Button';
 import { FileCard, BVFileItem } from '../components/ui/FileCard';
+import { Modal } from '../components/ui/Modal';
+import { Icon } from '../components/icons';
+import { Input } from '../components/ui/Input';
+import { useNetworkStore } from '../state/network';
 
 const API_BASE = process.env.REACT_APP_API_BASE || '';// kept for compatibility but dynamic apiUrl used
 
@@ -16,12 +20,24 @@ export const FilesSection: React.FC = () => {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [passModal, setPassModal] = useState<{ open: boolean; file?: FileItem }>(() => ({ open: false }));
+  const [downloadPass, setDownloadPass] = useState('');
+  const [shareModal, setShareModal] = useState<{ open: boolean; file?: FileItem }>(() => ({ open: false }));
+  const [shareRecipient, setShareRecipient] = useState('');
+  const [sharePassphrase, setSharePassphrase] = useState('');
+  const [shareNote, setShareNote] = useState('');
+  const [shareExpiry, setShareExpiry] = useState('');
+  const [shareSubmitting, setShareSubmitting] = useState(false);
 
   const removeFile = (fid: string) => setFiles(prev => prev.filter(f => f.file_id !== fid));
+
+  const incNet = useNetworkStore(s => s.inc);
+  const decNet = useNetworkStore(s => s.dec);
 
   const load = async () => {
     if (!jwt) return;
     setLoading(true);
+  incNet();
   try {
 	  const resp = await axios.get(apiUrl('/files?limit=100'), { headers: { Authorization: `Bearer ${jwt}` } });
       setFiles(resp.data.items);
@@ -30,6 +46,7 @@ export const FilesSection: React.FC = () => {
       toast.push({ type: 'error', msg: 'Failed to load files' });
     } finally {
       setLoading(false);
+  decNet();
     }
   };
 
@@ -42,12 +59,11 @@ export const FilesSection: React.FC = () => {
 
   if (!jwt) return null;
 
-  const handleDownload = async (f: FileItem) => {
-    const pass = prompt('Enter passphrase to decrypt/download');
-    if(!pass) return;
+  const doDownload = async (f: FileItem, pass: string) => {
     try {
       const url = apiUrl(`/files/${f.file_id}?key=${encodeURIComponent(pass)}`);
-      const r = await fetch(url, { headers: { Authorization: `Bearer ${jwt}` }});
+  incNet();
+  const r = await fetch(url, { headers: { Authorization: `Bearer ${jwt}` }}).finally(decNet);
       if(!r.ok){
         try {
           const j = await r.json();
@@ -76,10 +92,74 @@ export const FilesSection: React.FC = () => {
     } catch(e:any){ toast.push({type:'error', msg:'Download error'}); }
   };
 
+  const handleDownload = (f: FileItem) => {
+    setDownloadPass('');
+    setPassModal({ open: true, file: f });
+  };
+
+  const submitDownload = async () => {
+    if(!passModal.file) return;
+    const pass = downloadPass.trim();
+    if(!pass){ toast.push({type:'error', msg:'Passphrase required'}); return; }
+    await doDownload(passModal.file, pass);
+    setPassModal({ open:false });
+  };
+
+  const openShareModal = (file: FileItem) => {
+    setShareRecipient('');
+    setSharePassphrase('');
+    setShareNote('');
+    setShareExpiry('');
+    setShareModal({ open: true, file });
+  };
+
+  const submitShare = async () => {
+    if (!shareModal.file) return;
+    const recipient = shareRecipient.trim();
+    const passphrase = sharePassphrase.trim();
+    if (!recipient) {
+      toast.push({ type: 'error', msg: 'Recipient address required' });
+      return;
+    }
+    if (!passphrase) {
+      toast.push({ type: 'error', msg: 'Passphrase required' });
+      return;
+    }
+    const payload: Record<string, any> = {
+      recipient,
+      passphrase,
+    };
+    const note = shareNote.trim();
+    if (note) payload.note = note;
+    if (shareExpiry) {
+      const ms = Date.parse(shareExpiry);
+      if (Number.isNaN(ms)) {
+        toast.push({ type: 'error', msg: 'Invalid expiration date' });
+        return;
+      }
+      payload.expires_at = ms;
+    }
+    try {
+      setShareSubmitting(true);
+  incNet();
+      await axios.post(apiUrl(`/files/${shareModal.file.file_id}/share`), payload, { headers: { Authorization: `Bearer ${jwt}` }});
+      toast.push({ type: 'success', msg: `Shared ${shareModal.file.name}` });
+      window.dispatchEvent(new CustomEvent('blockvault_share_changed'));
+      setShareModal({ open: false });
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || err.message || 'Share failed';
+      toast.push({ type: 'error', msg });
+    } finally {
+  decNet();
+      setShareSubmitting(false);
+    }
+  };
+
   const handleDelete = async (f: FileItem) => {
     if(!confirm('Delete this file?')) return;
     try {
-      await axios.delete(apiUrl(`/files/${f.file_id}`), { headers: { Authorization: `Bearer ${jwt}` }});
+  incNet();
+  await axios.delete(apiUrl(`/files/${f.file_id}`), { headers: { Authorization: `Bearer ${jwt}` }}).finally(decNet);
       toast.push({ type:'success', msg:'Deleted' });
       load();
     } catch(e:any){ toast.push({type:'error', msg:'Delete failed'}); }
@@ -87,7 +167,8 @@ export const FilesSection: React.FC = () => {
 
   const handleVerify = async (f: FileItem) => {
     try {
-      const vr = await axios.get(apiUrl(`/files/${f.file_id}/verify`), { headers: { Authorization: `Bearer ${jwt}` }});
+  incNet();
+  const vr = await axios.get(apiUrl(`/files/${f.file_id}/verify`), { headers: { Authorization: `Bearer ${jwt}` }}).finally(decNet);
       toast.push({ type:'info', msg: vr.data.has_encrypted_blob ? 'Blob present' : 'Blob missing' });
     } catch(e:any){
       const status = e?.response?.status;
@@ -124,13 +205,14 @@ export const FilesSection: React.FC = () => {
             onDownload={() => handleDownload(f)}
             onDelete={() => handleDelete(f)}
             onVerify={() => handleVerify(f)}
+            onShare={() => openShareModal(f)}
             onCopyCid={() => { if(f.cid) { navigator.clipboard.writeText(f.cid); toast.push({type:'success', msg:'CID copied'});} }}
             onCopyHash={() => { navigator.clipboard.writeText(f.sha256); toast.push({type:'success', msg:'Hash copied'});} }
           />
         ))}
         {!loading && !files.length && (
           <div className="flex flex-col items-center justify-center text-center py-16 gap-4 border border-dashed border-border/50 rounded-2xl bg-background-tertiary/20">
-            <div className="w-16 h-16 rounded-2xl bg-background-tertiary/40 flex items-center justify-center text-3xl">📁</div>
+            <div className="w-16 h-16 rounded-2xl bg-background-tertiary/40 flex items-center justify-center"><Icon name="folder" size={36} className="text-accent-blue" /></div>
             <div className="space-y-1">
               <div className="text-sm font-medium text-text-primary">Your encrypted files will appear here</div>
               <div className="text-[11px] text-text-secondary/60">Upload a file to begin</div>
@@ -138,6 +220,56 @@ export const FilesSection: React.FC = () => {
           </div>
         )}
       </div>
+      <Modal
+        open={passModal.open}
+        onClose={() => setPassModal({ open:false })}
+        title="Enter Passphrase"
+        footer={<>
+          <Button size="sm" variant="secondary" onClick={()=>setPassModal({open:false})}>Cancel</Button>
+          <Button size="sm" variant="primary" onClick={submitDownload}>Download</Button>
+        </>}
+      >
+        <div className="space-y-3">
+          <p className="text-[11px] leading-relaxed">Provide the passphrase used during encryption to decrypt and download <span className="font-medium text-text-primary">{passModal.file?.name}</span>.</p>
+          <Input data-autofocus label="Passphrase" value={downloadPass} onChange={e=>setDownloadPass(e.target.value)} placeholder="decryption key" revealToggle />
+        </div>
+      </Modal>
+      <Modal
+        open={shareModal.open}
+        onClose={() => !shareSubmitting && setShareModal({ open:false })}
+        title={`Share ${shareModal.file?.name ?? ''}`.trim()}
+        footer={<>
+          <Button size="sm" variant="secondary" onClick={() => setShareModal({ open:false })} disabled={shareSubmitting}>Cancel</Button>
+          <Button size="sm" variant="primary" onClick={submitShare} loading={shareSubmitting} disabled={shareSubmitting}>Send Share</Button>
+        </>}
+      >
+        <div className="space-y-3">
+          <Input label="Recipient address" value={shareRecipient} onChange={e => setShareRecipient(e.target.value)} placeholder="0x..." mono />
+          <Input label="Passphrase" value={sharePassphrase} onChange={e => setSharePassphrase(e.target.value)} placeholder="same key you will send out-of-band" revealToggle />
+          <label className="flex flex-col gap-1 text-xs text-text-secondary">
+            <span className="text-text-secondary/80 font-medium tracking-tight">Note (optional)</span>
+            <textarea
+              value={shareNote}
+              onChange={e => setShareNote(e.target.value)}
+              rows={3}
+              maxLength={280}
+              className="w-full resize-none px-3 py-2 rounded-md bg-background-tertiary/70 border border-border/60 focus:border-accent-blue/80 focus:ring-2 focus:ring-accent-blue/40 outline-none transition text-text-primary placeholder:text-text-secondary/40"
+              placeholder="Hint for the recipient"
+            />
+            <span className="text-[10px] text-text-secondary/50">{shareNote.length}/280</span>
+          </label>
+          <Input
+            label="Expires at (optional)"
+            type="datetime-local"
+            value={shareExpiry}
+            onChange={e => setShareExpiry(e.target.value)}
+          />
+          <p className="text-[11px] leading-relaxed text-text-secondary/70 flex items-center gap-2">
+            <Icon name="info" size={14} className="text-accent-blue" />
+            Recipient must register their RSA public key and decrypt the passphrase with their wallet keypair.
+          </p>
+        </div>
+      </Modal>
     </section>
   );
 };

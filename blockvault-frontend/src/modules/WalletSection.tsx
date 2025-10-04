@@ -3,7 +3,6 @@ import { ethers } from 'ethers';
 import axios from 'axios';
 import { useAuthStore } from '../state/auth';
 import { apiUrl, resolveApiBase } from '../api/base';
-import { useDiagnostics } from '../state/diagnostics';
 import { Button } from '../components/ui/Button';
 import { useToastStore } from '../state/toastHost';
 
@@ -13,7 +12,6 @@ const API_BASE = resolveApiBase();
 export const WalletSection: React.FC = () => {
   const { address, setAddress, setJwt, loading, setLoading, reset } = useAuthStore();
   const [error, setError] = useState<string | null>(null);
-  const diag = useDiagnostics();
   const toast = useToastStore();
 
   const connect = useCallback(async () => {
@@ -41,7 +39,6 @@ export const WalletSection: React.FC = () => {
   const nonceUrl = apiUrl('/auth/get_nonce');
   console.debug('[login] POST', nonceUrl, { address, API_BASE });
   const nonceResp = await axios.post(nonceUrl, { address });
-  diag.push({ level:'info', message:'nonce ok', meta:{ url: nonceUrl }});
       const message = nonceResp.data.message;
       // 2. sign
       const provider = new ethers.BrowserProvider((window as any).ethereum);
@@ -51,7 +48,6 @@ export const WalletSection: React.FC = () => {
   const loginUrl = apiUrl('/auth/login');
   console.debug('[login] POST', loginUrl, { address, signature: signature.slice(0, 12)+'...' });
   const loginResp = await axios.post(loginUrl, { address, signature });
-  diag.push({ level:'info', message:'login ok'});
       setJwt(loginResp.data.token);
       console.debug('[login] success');
     } catch (e: any) {
@@ -62,8 +58,6 @@ export const WalletSection: React.FC = () => {
         msg = 'Proxy misconfigured (received HTML instead of JSON)';
       }
   setError(msg);
-  diag.setLastLoginError(msg);
-  diag.push({ level:'error', message:'login failed', meta:{ msg } });
       console.warn('[login] failed', msg, e.response?.status);
     } finally {
       setLoading(false);

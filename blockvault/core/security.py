@@ -5,6 +5,8 @@ from flask import current_app, request, abort
 from functools import wraps
 from typing import Any, Dict, Callable, TypeVar, cast
 
+from .rbac import attach_role
+
 
 def generate_jwt(payload: Dict[str, Any]) -> str:
     secret = current_app.config["JWT_SECRET"]
@@ -43,6 +45,7 @@ def require_auth(fn: F) -> F:
             abort(401, "invalid subject")
         # Attach to request context (not thread safe across greenlets, but fine here)
         request.address = sub  # type: ignore[attr-defined]
+        attach_role(sub)
         return fn(*args, **kwargs)
 
     return cast(F, wrapper)

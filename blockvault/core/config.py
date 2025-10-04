@@ -17,6 +17,9 @@ class Config:
     ipfs_api_token: str | None = None
     ipfs_enabled: bool = False
     ipfs_gateway_url: str | None = None
+    eth_rpc_url: str | None = None
+    role_registry_address: str | None = None
+    cors_allowed_origins: str | None = None
     app_name: str = "BlockVault"
 
 
@@ -31,6 +34,9 @@ def load_config() -> Config:
     ipfs_api_token = os.getenv("IPFS_API_TOKEN")
     ipfs_enabled = os.getenv("IPFS_ENABLED", "false").lower() in {"1", "true", "yes"}
     ipfs_gateway_url = os.getenv("IPFS_GATEWAY_URL")
+    eth_rpc_url = os.getenv("ETH_RPC_URL")
+    role_registry_address = os.getenv("ROLE_REGISTRY_ADDRESS")
+    cors_allowed_origins = os.getenv("CORS_ALLOWED_ORIGINS")
     return Config(
         env=env,
         debug=debug,
@@ -42,4 +48,7 @@ def load_config() -> Config:
         ipfs_api_token=ipfs_api_token,
         ipfs_enabled=ipfs_enabled,
         ipfs_gateway_url=ipfs_gateway_url,
+        eth_rpc_url=eth_rpc_url,
+        role_registry_address=role_registry_address,
+        cors_allowed_origins=cors_allowed_origins,
     )

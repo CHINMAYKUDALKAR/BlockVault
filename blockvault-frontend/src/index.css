@@ -1,0 +1,146 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* BlockVault Design System - Friendly & Secure */
+    
+    /* Deep navy background - professional yet approachable */
+    --background: 214 35% 15%;
+    --foreground: 0 0% 88%;
+    
+    /* Card backgrounds with subtle elevation */
+    --card: 214 30% 18%;
+    --card-foreground: 0 0% 88%;
+    --card-hover: 214 28% 22%;
+    
+    /* Popover styling */
+    --popover: 214 30% 18%;
+    --popover-foreground: 0 0% 88%;
+    
+    /* Vibrant teal accent - positive and engaging */
+    --primary: 174 47% 52%;
+    --primary-foreground: 214 35% 15%;
+    --primary-glow: 174 47% 65%;
+    
+    /* Secondary actions - softer teal */
+    --secondary: 174 30% 35%;
+    --secondary-foreground: 0 0% 88%;
+    
+    /* Muted elements */
+    --muted: 214 25% 25%;
+    --muted-foreground: 0 0% 65%;
+    
+    /* Accent highlights */
+    --accent: 174 45% 45%;
+    --accent-foreground: 0 0% 95%;
+    
+    /* Success - warm green */
+    --success: 130 35% 65%;
+    --success-foreground: 214 35% 15%;
+    
+    /* Destructive actions */
+    --destructive: 0 65% 60%;
+    --destructive-foreground: 0 0% 95%;
+    
+    /* Borders and inputs - subtle */
+    --border: 214 25% 28%;
+    --input: 214 25% 25%;
+    --ring: 174 47% 52%;
+    
+    /* Generous rounded corners */
+    --radius: 1rem;
+    --radius-lg: 1.5rem;
+    
+    /* Custom gradients for delightful effects */
+    --gradient-primary: linear-gradient(135deg, hsl(174 47% 52%), hsl(174 47% 65%));
+    --gradient-card: linear-gradient(135deg, hsl(214 30% 18%), hsl(214 28% 20%));
+    --gradient-glow: radial-gradient(circle at center, hsl(174 47% 52% / 0.15), transparent 70%);
+    
+    /* Shadows for depth */
+    --shadow-sm: 0 2px 8px hsl(214 35% 10% / 0.3);
+    --shadow-md: 0 4px 16px hsl(214 35% 10% / 0.4);
+    --shadow-lg: 0 8px 32px hsl(214 35% 10% / 0.5);
+    --shadow-glow: 0 0 40px hsl(174 47% 52% / 0.3);
+    
+    /* Smooth transitions */
+    --transition-base: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-bounce: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "cv11", "ss01";
+    font-optical-sizing: auto;
+  }
+  
+  /* Custom utility classes for delightful interactions */
+  .hover-lift {
+    transition: var(--transition-bounce);
+  }
+  
+  .hover-lift:hover {
+    transform: translateY(-2px);
+  }
+  
+  .hover-glow {
+    transition: var(--transition-base);
+  }
+  
+  .hover-glow:hover {
+    box-shadow: var(--shadow-glow);
+  }
+  
+  .bounce-in {
+    animation: bounceIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  
+  @keyframes bounceIn {
+    0% {
+      opacity: 0;
+      transform: scale(0.3);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.05);
+    }
+    70% {
+      transform: scale(0.9);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  
+  @keyframes shimmer {
+    0% {
+      background-position: -1000px 0;
+    }
+    100% {
+      background-position: 1000px 0;
+    }
+  }
+  
+  .shimmer {
+    animation: shimmer 2s infinite linear;
+    background: linear-gradient(
+      to right,
+      transparent 0%,
+      hsl(174 47% 52% / 0.3) 50%,
+      transparent 100%
+    );
+    background-size: 1000px 100%;
+  }
+}

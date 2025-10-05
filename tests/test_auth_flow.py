@@ -3,7 +3,6 @@ from blockvault import create_app
 from blockvault.core.security import generate_jwt
 from eth_account import Account
 from eth_account.messages import encode_defunct
-from web3 import Web3
 
 @pytest.fixture()
 def app():
@@ -46,7 +45,7 @@ def test_me_with_valid_token(client):
 def test_full_signature_login_flow(client):
     # Create ephemeral account
     acct = Account.create()
-    address = Web3.to_checksum_address(acct.address)
+    address = acct.address.lower()
 
     # Step 1: request nonce
     resp = client.post('/auth/get_nonce', json={'address': address})

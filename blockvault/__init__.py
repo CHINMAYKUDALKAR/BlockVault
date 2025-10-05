@@ -3,9 +3,11 @@ import os
 from flask_cors import CORS
 from .core.config import load_config
 from .core.db import init_db
+from .core.settings import bootstrap_settings_into_config
 from .api.auth import bp as auth_bp
 from .api.files import bp as files_bp
 from .api.users import bp as users_bp
+from .api.settings import bp as settings_bp
 
 def create_app() -> Flask:
     app = Flask(__name__)
@@ -21,12 +23,18 @@ def create_app() -> Flask:
         IPFS_API_URL=cfg.ipfs_api_url,
         IPFS_API_TOKEN=cfg.ipfs_api_token,
         IPFS_GATEWAY_URL=cfg.ipfs_gateway_url,
-        ETH_RPC_URL=cfg.eth_rpc_url,
-        ROLE_REGISTRY_ADDRESS=cfg.role_registry_address,
+    # On-chain access control removed; no ETH_RPC_URL needed
         CORS_ALLOWED_ORIGINS=cfg.cors_allowed_origins,
     )
 
     init_db(app)
+    # Load DB-stored dynamic settings (contract overrides) after DB init
+    with app.app_context():  # ensure current_app available
+        try:
+            bootstrap_settings_into_config()
+        except Exception as e:  # non-fatal
+            app.logger.warning(f"Failed to bootstrap dynamic settings: {e}")
+        # On-chain sync removed
     # Enable CORS with optional origin overrides for deployment.
     allowed_origins = cfg.cors_allowed_origins or "*"
     if allowed_origins.strip() in {"*", ""}:
@@ -58,6 +66,49 @@ def create_app() -> Flask:
     app.register_blueprint(auth_bp, url_prefix="/auth")
     app.register_blueprint(files_bp, url_prefix="/files")
     app.register_blueprint(users_bp, url_prefix="/users")
+    app.register_blueprint(settings_bp, url_prefix="/settings")
+
+    @app.get('/status')
+    def status():  # runtime capability flags for frontend label (Off-Chain / Anchored / Hybrid)
+        import time
+        import requests
+        ipfs_enabled = bool(app.config.get('IPFS_ENABLED'))
+        anchoring_enabled = bool(app.config.get('ETH_RPC_URL') and app.config.get('ETH_PRIVATE_KEY') and app.config.get('FILE_REGISTRY_ADDRESS'))
+        ipfs_available = False
+        ipfs_version = None
+        ipfs_error = None
+        if ipfs_enabled:
+            api_url = (app.config.get('IPFS_API_URL') or '').rstrip('/') or 'http://127.0.0.1:5001'
+            # Only attempt a very fast health probe; keep failure silent beyond response fields
+            try:
+                ver_endpoint = api_url + '/api/v0/version'
+                r = requests.post(ver_endpoint, timeout=2)
+                if r.ok:
+                    js = r.json()
+                    ipfs_available = True
+                    ipfs_version = js.get('Version') or js.get('version')
+                else:
+                    ipfs_error = f"version status {r.status_code}"
+            except Exception as e:
+                ipfs_error = str(e).__class__.__name__ if len(str(e)) < 120 else str(e)[:120]
+        cfg_flags = {
+            'ipfs_enabled': ipfs_enabled,
+            'ipfs_available': ipfs_available,
+            'ipfs_version': ipfs_version,
+            'anchoring_enabled': anchoring_enabled,
+            'ipfs_error': ipfs_error,
+        }
+        mode = 'off-chain'
+        if ipfs_enabled and anchoring_enabled:
+            mode = 'hybrid'
+        elif anchoring_enabled:
+            mode = 'anchored'
+        elif ipfs_enabled:
+            mode = 'ipfs'
+        return {
+            **cfg_flags,
+            'mode': mode,
+        }
 
     @app.get('/auth/_routes')
     def auth_routes():  # lightweight diagnostics
@@ -95,8 +146,10 @@ def create_app() -> Flask:
                 "/files/shared (GET shares received)",
                 "/files/shares/outgoing (GET shares sent)",
                 "/files/shares/<id> (DELETE share)",
+                "/files/<id>/access (GET list cached access roles, POST record, DELETE remove)",
                 "/users/profile (GET role & sharing key status)",
                 "/users/public_key (POST/DELETE manage sharing key)",
+                "/settings (GET current dynamic contract addresses, POST admin update)",
                 "/debug/files (DEV only raw listing)",
             ],
         })
@@ -156,11 +209,7 @@ def create_app() -> Flask:
             return {"error": "invalid address length", "provided_length": len(cleaned)}, 400
         if any(c not in hexdigits for c in cleaned):
             return {"error": "address contains non-hex characters"}, 400
-        try:
-            from web3 import Web3
-            address = Web3.to_checksum_address('0x' + cleaned)
-        except Exception:
-            return {"error": "could not checksum address"}, 400
+        address = '0x' + cleaned
         from .core.security import generate_jwt
         token = generate_jwt({"sub": address})
         return {"token": token, "address": address}

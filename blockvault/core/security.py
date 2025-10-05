@@ -5,7 +5,30 @@ from flask import current_app, request, abort
 from functools import wraps
 from typing import Any, Dict, Callable, TypeVar, cast
 
-from .rbac import attach_role
+"""Simplified security utilities (on-chain RBAC removed).
+
+Previously the system attached dynamic roles (viewer/owner/admin) resolved via
+an on-chain RoleRegistry contract. All that logic has been removed for the
+off‑chain edition. For now, every authenticated address is implicitly treated
+as an OWNER for file operations; selective sharing still governs access to
+non-owned files via explicit share records.
+
+If you later reintroduce granular roles, add a lightweight role resolver and
+decorate endpoints accordingly.
+"""
+
+from typing import Any as _Any  # avoid unused import lint complaints
+
+def _attach_default_role(address: str) -> None:
+    """Attach a default implicit role to the request context.
+
+    We mimic the old interface (setting request.role) so existing endpoint code
+    that references request.role / role_name keeps functioning without change.
+    Role numeric values kept for minimal compatibility: OWNER = 2.
+    """
+    from flask import request as _req
+    _req.role = 2  # OWNER
+    _req.role_name = "owner"
 
 
 def generate_jwt(payload: Dict[str, Any]) -> str:
@@ -45,7 +68,7 @@ def require_auth(fn: F) -> F:
             abort(401, "invalid subject")
         # Attach to request context (not thread safe across greenlets, but fine here)
         request.address = sub  # type: ignore[attr-defined]
-        attach_role(sub)
+        _attach_default_role(sub)
         return fn(*args, **kwargs)
 
     return cast(F, wrapper)

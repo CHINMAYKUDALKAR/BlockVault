@@ -15,6 +15,8 @@ interface ProfileResponse {
   role_value: number | null;
   has_public_key: boolean;
   public_key_pem?: string;
+  role_registry_address?: string | null;
+  file_access_contract?: string | null;
 }
 
 interface BaseShare {
@@ -71,14 +73,21 @@ export const SharingSection: React.FC = () => {
   const [outgoing, setOutgoing] = useState<OutgoingShare[]>([]);
   const [loading, setLoading] = useState(false);
   const [savingKey, setSavingKey] = useState(false);
+  const [busy, setBusy] = useState(false);
   // Incoming share download modal (Option A implementation)
   const [dlModal, setDlModal] = useState<{ open: boolean; share?: IncomingShare }>(() => ({ open: false }));
   const [dlPass, setDlPass] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [privModal, setPrivModal] = useState<{ open: boolean; pem?: string }>({ open: false });
+  // Legacy on-chain RBAC settings removed
+  const [settingsModal, setSettingsModal] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
 
   const authorizedHeaders = useMemo(() => ({ headers: { Authorization: `Bearer ${jwt}` } }), [jwt]);
 
   const loadAll = useCallback(async () => {
-    if (!jwt) return;
+    if (!jwt || busy) return;
+    setBusy(true);
     setLoading(true);
     incNet();
     try {
@@ -94,13 +103,15 @@ export const SharingSection: React.FC = () => {
       setIncoming(incomingRes.data?.shares ?? []);
       setOutgoing(outgoingRes.data?.shares ?? []);
     } catch (err: any) {
+      // Only show one network error toast per batch (dedup also helps)
       const msg = err?.response?.data?.error || err.message || 'Failed to load sharing data';
       toast.push({ type: 'error', msg });
     } finally {
       decNet();
       setLoading(false);
+      setBusy(false);
     }
-  }, [authorizedHeaders, jwt, incNet, decNet, toast]);
+  }, [authorizedHeaders, jwt, incNet, decNet, toast, busy]);
 
   useEffect(() => {
     loadAll();
@@ -221,6 +232,79 @@ export const SharingSection: React.FC = () => {
     setDlModal({ open: false });
   };
 
+  // ---- RSA Key Generation (Client-Side) ----
+  const arrayBufferToBase64 = (buf: ArrayBuffer) => {
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary);
+  };
+
+  const wrapPem = (b64: string, type: 'PUBLIC KEY' | 'PRIVATE KEY') => {
+    const lines = b64.match(/.{1,64}/g) || [];
+    return `-----BEGIN ${type}-----\n${lines.join('\n')}\n-----END ${type}-----`;
+  };
+
+  const generateRsaKey = async () => {
+    if (generating) return;
+    setGenerating(true);
+    try {
+      const keyPair = await window.crypto.subtle.generateKey(
+        {
+          name: 'RSA-OAEP',
+          modulusLength: 2048,
+            publicExponent: new Uint8Array([0x01, 0x00, 0x01]),
+          hash: 'SHA-256'
+        },
+        true,
+        ['encrypt', 'decrypt']
+      );
+      const spki = await window.crypto.subtle.exportKey('spki', keyPair.publicKey);
+      const pkcs8 = await window.crypto.subtle.exportKey('pkcs8', keyPair.privateKey);
+      const pubPem = wrapPem(arrayBufferToBase64(spki), 'PUBLIC KEY');
+      const privPem = wrapPem(arrayBufferToBase64(pkcs8), 'PRIVATE KEY');
+      // Autofill public key text area (user still clicks Save key to send to backend)
+      setKeyInput(pubPem);
+      setPrivModal({ open: true, pem: privPem });
+      toast.push({ type: 'success', msg: 'RSA key pair generated locally' });
+    } catch (e: any) {
+      toast.push({ type: 'error', msg: 'Key generation failed' });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const downloadPrivateKey = () => {
+    if (!privModal.pem) return;
+    const blob = new Blob([privModal.pem], { type: 'application/x-pem-file' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'blockvault_private_key.pem';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast.push({ type: 'info', msg: 'Private key downloaded (store securely)' });
+  };
+
+  // -------- Settings (Dynamic Contract Addresses) --------
+  const openSettings = async () => { setSettingsModal(true); };
+
+  const saveSettings = async () => {
+    if(!profile) return;
+    setSettingsSaving(true);
+    try {
+      // No-op placeholder (legacy removal)
+      await axios.post(apiUrl('/settings'), {}, authorizedHeaders);
+      toast.push({ type:'success', msg:'Settings saved (no-op)' });
+      setSettingsModal(false);
+      // Refresh profile to reflect changes in UI
+      await loadAll();
+    } catch (e:any) {
+      toast.push({ type:'error', msg: e?.response?.data?.error || e.message || 'Update failed' });
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
+
   return (
     <section className="space-y-6">
       <div className="flex items-center justify-between">
@@ -228,7 +312,9 @@ export const SharingSection: React.FC = () => {
           <Icon name="share" size={18} className="text-accent-blue" />
           <h2 className="text-base font-semibold tracking-tight">Sharing Center</h2>
         </div>
-        <Button size="sm" variant="secondary" onClick={loadAll} disabled={loading}>Refresh</Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="secondary" onClick={loadAll} disabled={loading}>Refresh</Button>
+        </div>
       </div>
 
       <div className="p-4 rounded-xl border border-border/50 bg-background-tertiary/40 space-y-3">
@@ -240,9 +326,14 @@ export const SharingSection: React.FC = () => {
               <div className="text-[11px] uppercase tracking-wider text-text-secondary/60">Role: {profile?.role ?? 'unknown'}</div>
             </div>
           </div>
-          {profile?.has_public_key && (
-            <span className="px-2 py-1 text-[11px] rounded-full bg-accent-blue/10 border border-accent-blue/40 text-accent-blue">Key registered</span>
-          )}
+          <div className="flex items-center gap-2">
+            {profile?.has_public_key && (
+              <span className="px-2 py-1 text-[11px] rounded-full bg-accent-blue/10 border border-accent-blue/40 text-accent-blue">Key registered</span>
+            )}
+            <Button size="sm" variant="outline" onClick={openSettings}>
+              Settings
+            </Button>
+          </div>
         </div>
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-text-secondary/80 font-medium tracking-tight">RSA Public Key (PEM)</span>
@@ -257,6 +348,7 @@ export const SharingSection: React.FC = () => {
         <div className="flex gap-2">
           <Button size="sm" variant="primary" onClick={saveKey} loading={savingKey} disabled={savingKey}>Save key</Button>
           <Button size="sm" variant="danger" onClick={deleteKey} disabled={!profile?.has_public_key || savingKey}>Remove</Button>
+          <Button size="sm" variant="secondary" onClick={generateRsaKey} loading={generating} disabled={generating}>Generate RSA</Button>
         </div>
         <p className="text-[11px] text-text-secondary/70 leading-relaxed flex items-start gap-2">
           <Icon name="info" size={14} className="text-accent-blue mt-0.5" />
@@ -350,6 +442,39 @@ export const SharingSection: React.FC = () => {
           </p>
           <Input data-autofocus label="Decrypted passphrase" value={dlPass} onChange={e => setDlPass(e.target.value)} placeholder="plaintext passphrase" revealToggle />
           <p className="text-[10px] text-text-secondary/60">We never store this passphrase; it is sent once to derive the file contents.</p>
+        </div>
+      </Modal>
+      <Modal
+        open={privModal.open}
+        onClose={() => setPrivModal({ open: false })}
+        title="Your New Private Key"
+        footer={<>
+          <Button size="sm" variant="secondary" onClick={() => setPrivModal({ open:false })}>Close</Button>
+          <Button size="sm" variant="primary" onClick={downloadPrivateKey}>Download .pem</Button>
+        </>}
+      >
+        <div className="space-y-3">
+          <p className="text-[11px] leading-relaxed text-accent-red/80">Copy and store this private key securely. It is not sent to the server and cannot be recovered if lost.</p>
+          <div className="max-h-60 overflow-auto text-[10px] font-mono whitespace-pre break-all bg-background-tertiary/50 border border-border/40 rounded-md p-2">
+            {privModal.pem}
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" variant="secondary" onClick={() => { if(privModal.pem){ navigator.clipboard.writeText(privModal.pem); toast.push({type:'success', msg:'Private key copied'}); } }}>Copy</Button>
+            <Button size="sm" variant="outline" onClick={() => { setPrivModal({ open:false }); }}>Done</Button>
+          </div>
+        </div>
+      </Modal>
+      <Modal
+        open={settingsModal}
+        onClose={() => setSettingsModal(false)}
+        title="Protocol Settings"
+        footer={<>
+          <Button size="sm" variant="secondary" onClick={()=>setSettingsModal(false)}>Close</Button>
+          <Button size="sm" variant="primary" onClick={saveSettings} disabled={settingsSaving} loading={settingsSaving}>Save</Button>
+        </>}
+      >
+        <div className="space-y-4">
+          <p className="text-[11px] leading-relaxed text-text-secondary/70">No configurable on-chain RBAC parameters remain. This panel is retained only for future protocol settings.</p>
         </div>
       </Modal>
     </section>

@@ -103,3 +103,39 @@ def gateway_url(cid: str) -> Optional[str]:
         # default public gateway
         gw = "https://ipfs.io/ipfs"
     return f"{gw.rstrip('/')}/{cid}"
+
+
+def unpin(cid: str) -> bool:
+    """Best-effort unpin of a CID.
+
+    Supports both:
+      * Multiaddr daemon via ipfshttpclient (pin.rm)
+      * HTTP API providers (/api/v0/pin/rm)
+      * Pinata / gateway style token-auth endpoints (Authorization header)
+    Returns True if request appeared successful, False otherwise.
+    """
+    if not cid:
+        return False
+    if not ipfs_enabled():
+        return False
+    api_url = current_app.config.get("IPFS_API_URL") or "/dns/localhost/tcp/5001/http"
+    try:
+        if _is_http_mode(api_url):
+            # HTTP API: POST /api/v0/pin/rm?arg=<cid>
+            endpoint = api_url.rstrip('/') + '/api/v0/pin/rm'
+            resp = requests.post(endpoint, headers=_http_headers(), params={'arg': cid, 'recursive': 'true'}, timeout=30)
+            # Some providers return non-200 if already unpinned; treat 200/400 gracefully
+            if resp.status_code in (200, 400, 404):
+                return True
+            return False
+        client = _get_client()
+        if client is None:
+            return False
+        try:  # type: ignore[attr-defined]
+            client.pin.rm(cid)  # type: ignore
+            return True
+        except Exception:
+            return False
+    except Exception as e:
+        logger.warning("IPFS unpin failed: %s", e)
+        return False

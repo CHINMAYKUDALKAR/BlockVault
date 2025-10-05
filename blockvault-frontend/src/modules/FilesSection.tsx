@@ -20,6 +20,8 @@ export const FilesSection: React.FC = () => {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState('');
+  const [folderFilter, setFolderFilter] = useState('');
   const [passModal, setPassModal] = useState<{ open: boolean; file?: FileItem }>(() => ({ open: false }));
   const [downloadPass, setDownloadPass] = useState('');
   const [shareModal, setShareModal] = useState<{ open: boolean; file?: FileItem }>(() => ({ open: false }));
@@ -28,29 +30,49 @@ export const FilesSection: React.FC = () => {
   const [shareNote, setShareNote] = useState('');
   const [shareExpiry, setShareExpiry] = useState('');
   const [shareSubmitting, setShareSubmitting] = useState(false);
+  const [previewModal, setPreviewModal] = useState<{ open: boolean; file?: FileItem; content?: string; mime?: string; loading?: boolean }>(() => ({ open:false }));
+  // On-chain access control removed – related state deleted.
 
   const removeFile = (fid: string) => setFiles(prev => prev.filter(f => f.file_id !== fid));
 
   const incNet = useNetworkStore(s => s.inc);
   const decNet = useNetworkStore(s => s.dec);
 
+  let loadingPromise: Promise<void> | null = null;
   const load = async () => {
     if (!jwt) return;
+    if (loadingPromise) return loadingPromise; // prevent overlapping
     setLoading(true);
-  incNet();
-  try {
-	  const resp = await axios.get(apiUrl('/files?limit=100'), { headers: { Authorization: `Bearer ${jwt}` } });
-      setFiles(resp.data.items);
-    } catch (e: any) {
-      setError(e.response?.data?.error || e.message);
-      toast.push({ type: 'error', msg: 'Failed to load files' });
-    } finally {
-      setLoading(false);
-  decNet();
-    }
+    incNet();
+    const run = (async () => {
+      try {
+        const params: string[] = ['limit=100'];
+        if (search.trim()) params.push('q=' + encodeURIComponent(search.trim()));
+        if (folderFilter.trim()) params.push('folder=' + encodeURIComponent(folderFilter.trim()));
+        const resp = await axios.get(apiUrl('/files?' + params.join('&')), { headers: { Authorization: `Bearer ${jwt}` } });
+        setFiles(resp.data.items);
+        setError(null);
+      } catch (e: any) {
+        // Do not toast here; global interceptor + suppression handles network errors.
+        setError(e.response?.data?.error || e.message);
+      } finally {
+        setLoading(false);
+        decNet();
+        loadingPromise = null;
+      }
+    })();
+    loadingPromise = run;
+    return run;
   };
 
   useEffect(() => { load(); }, [jwt]);
+  // Profile load (access control removed)
+  // AccessManager logic removed.
+  // Debounced search reload
+  useEffect(() => {
+    const t = setTimeout(() => { if(jwt) load(); }, 350);
+    return () => clearTimeout(t);
+  }, [search, folderFilter]);
   useEffect(() => {
     const h = () => load();
     window.addEventListener('blockvault_upload_done', h);
@@ -92,6 +114,47 @@ export const FilesSection: React.FC = () => {
     } catch(e:any){ toast.push({type:'error', msg:'Download error'}); }
   };
 
+  const doPreview = async (f: FileItem, pass: string) => {
+    setPreviewModal(p => ({ ...p, loading: true, content: undefined }));
+    try {
+      const url = apiUrl(`/files/${f.file_id}?key=${encodeURIComponent(pass)}&inline=1`);
+      incNet();
+      const resp = await fetch(url, { headers: { Authorization: `Bearer ${jwt}` }});
+      if(!resp.ok){
+        toast.push({type:'error', msg:'Preview failed'});
+        return;
+      }
+      // Attempt to read as text first; if binary large, truncate
+      const blob = await resp.blob();
+      const size = blob.size;
+      if(size > 2_000_000){ // 2MB safety
+        toast.push({type:'info', msg:'File too large for inline preview'});
+        return;
+      }
+      const text = await blob.text();
+      let snippet = text;
+      if(text.length > 10000) snippet = text.slice(0, 10000) + '\n... (truncated)';
+      setPreviewModal(p => ({ ...p, content: snippet, mime: blob.type || 'text/plain', loading: false }));
+    } catch (e:any){
+      toast.push({type:'error', msg:'Preview error'});
+    } finally {
+      decNet();
+    }
+  };
+
+  const openPreview = (file: FileItem) => {
+    setDownloadPass('');
+    setPreviewModal({ open: true, file, content: undefined, loading: false });
+  };
+
+  const submitPreview = async () => {
+    if(!previewModal.file) return;
+    const pass = downloadPass.trim();
+    if(!pass){ toast.push({type:'error', msg:'Passphrase required'}); return; }
+    setPreviewModal(p => ({ ...p, loading: true }));
+    await doPreview(previewModal.file, pass);
+  };
+
   const handleDownload = (f: FileItem) => {
     setDownloadPass('');
     setPassModal({ open: true, file: f });
@@ -112,6 +175,14 @@ export const FilesSection: React.FC = () => {
     setShareExpiry('');
     setShareModal({ open: true, file });
   };
+
+  // Access control modal removed.
+
+  // Legacy access list removed (no event index yet)
+
+  // claimOwnership / grantViewer / revokeViewer removed.
+
+  // revokeAccess deprecated in new AccessManager flow (using revokeViewer)
 
   const submitShare = async () => {
     if (!shareModal.file) return;
@@ -191,9 +262,18 @@ export const FilesSection: React.FC = () => {
 
   return (
     <section className="space-y-5">
-      <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold tracking-tight">Your Files</h2>
-        <Button size="sm" variant="secondary" onClick={load} disabled={loading}>Refresh</Button>
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold tracking-tight">Your Files</h2>
+          <Button size="sm" variant="secondary" onClick={load} disabled={loading}>Refresh</Button>
+        </div>
+        <div className="grid gap-2 md:grid-cols-3">
+          <Input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name..." label="Search" />
+          <Input value={folderFilter} onChange={e=>setFolderFilter(e.target.value)} placeholder="Folder filter" label="Folder" />
+          <div className="flex items-end gap-2">
+            <Button size="sm" variant="outline" onClick={()=>{ setSearch(''); setFolderFilter(''); load(); }}>Clear</Button>
+          </div>
+        </div>
       </div>
       {error && <div className="text-xs text-accent-red">{error}</div>}
       <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1 scrollbar-thin">
@@ -206,7 +286,9 @@ export const FilesSection: React.FC = () => {
             onDelete={() => handleDelete(f)}
             onVerify={() => handleVerify(f)}
             onShare={() => openShareModal(f)}
+              onPreview={() => openPreview(f)}
             onCopyCid={() => { if(f.cid) { navigator.clipboard.writeText(f.cid); toast.push({type:'success', msg:'CID copied'});} }}
+            // Access control removed
             onCopyHash={() => { navigator.clipboard.writeText(f.sha256); toast.push({type:'success', msg:'Hash copied'});} }
           />
         ))}
@@ -270,6 +352,30 @@ export const FilesSection: React.FC = () => {
           </p>
         </div>
       </Modal>
+      <Modal
+        open={previewModal.open}
+        onClose={() => setPreviewModal({ open:false })}
+        title={`Preview ${previewModal.file?.name || ''}`.trim()}
+        footer={<>
+          <Button size="sm" variant="secondary" onClick={()=>setPreviewModal({ open:false })}>Close</Button>
+          {!previewModal.content && <Button size="sm" variant="primary" onClick={submitPreview} loading={previewModal.loading}>Load Preview</Button>}
+        </>}
+      >
+        <div className="space-y-3">
+          {!previewModal.content && (
+            <>
+              <p className="text-[11px] leading-relaxed">Enter the passphrase to decrypt a small inline preview (text / UTF-8 assumed, max 10KB shown).</p>
+              <Input data-autofocus label="Passphrase" value={downloadPass} onChange={e=>setDownloadPass(e.target.value)} placeholder="decryption key" revealToggle />
+            </>
+          )}
+          {previewModal.content && (
+            <div className="max-h-72 overflow-auto rounded-md border border-border/40 bg-background-tertiary/40 p-2 font-mono text-[11px] whitespace-pre-wrap break-all">
+              {previewModal.content}
+            </div>
+          )}
+        </div>
+      </Modal>
+      {/* Access control modal removed */}
     </section>
   );
 };

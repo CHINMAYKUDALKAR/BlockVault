@@ -17,6 +17,7 @@ export const UploadSection: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
   const [key, setKey] = useState('pass-phrase');
   const [aad, setAad] = useState('');
+  const [folder, setFolder] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [progress, setProgress] = useState<number>(0);
   const toast = useToastStore();
@@ -28,7 +29,8 @@ export const UploadSection: React.FC = () => {
     const form = new FormData();
     form.append('file', file);
     form.append('key', key);
-    if (aad) form.append('aad', aad);
+  if (aad) form.append('aad', aad);
+  if (folder.trim()) form.append('folder', folder.trim());
     try {
         net.inc();
         const resp = await axios.post(apiUrl('/files'), form, {
@@ -65,6 +67,10 @@ export const UploadSection: React.FC = () => {
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary/50 text-xs"><Icon name="info" size={14} /></span>
             <Input label="AAD (optional)" value={aad} onChange={e => setAad(e.target.value)} placeholder="associated data" className="pl-8" />
+          </div>
+          <div className="relative md:col-span-2">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary/50 text-xs"><Icon name="folder" size={14} /></span>
+            <Input label="Folder (optional)" value={folder} onChange={e => setFolder(e.target.value)} placeholder="documents/reports" className="pl-8" />
           </div>
         </div>
         <div className="flex items-center gap-4">

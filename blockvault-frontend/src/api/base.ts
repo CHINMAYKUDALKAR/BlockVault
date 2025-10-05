@@ -5,6 +5,13 @@
 // 3. Empty string (relative) for local proxy/dev
 
 let cached: string | null = null;
+let lastNetErrorAt = 0;
+let consecutiveNetErrors = 0;
+
+// Lightweight subscriber pattern so we don't import stores here (avoid circular deps)
+type ToastFn = (msg: string) => void;
+const toastListeners: ToastFn[] = [];
+export function _registerNetErrorListener(fn: ToastFn) { toastListeners.push(fn); }
 
 declare global {
   interface Window { __BV_API_BASE_OVERRIDE?: string }
@@ -57,4 +64,35 @@ export function apiUrl(path: string): string {
   if (path.startsWith('http://') || path.startsWith('https://')) return path;
   if (!path.startsWith('/')) path = '/' + path;
   return base + path;
+}
+
+// Attach a global axios interceptor exactly once (lazy import to keep bundle lean)
+// Consumers should import './api/base' early (index.tsx indirectly does).
+import axios from 'axios';
+if (!(axios as any).__BV_NET_INTERCEPTOR__) {
+  (axios as any).__BV_NET_INTERCEPTOR__ = true;
+  axios.interceptors.response.use(r => r, (error) => {
+    const now = Date.now();
+    const isNetwork = !!error?.message && /Network Error/i.test(error.message) && !error.response;
+    if (isNetwork) {
+      consecutiveNetErrors += 1;
+      // Throttle: only emit toast at most once every 5s or when exponential backoff step changes
+      const minInterval = 5000;
+      const backoffLevel = Math.min(5, Math.floor(consecutiveNetErrors / 3)); // 0..5
+      const interval = minInterval + backoffLevel * 3000;
+      if (now - lastNetErrorAt > interval) {
+        lastNetErrorAt = now;
+        const hint = backoffLevel > 0 ? ` (backoff x${backoffLevel+1})` : '';
+        toastListeners.forEach(fn => fn('Network unreachable, retrying' + hint));
+      }
+    } else {
+      if (error.response) {
+        // Reset counter on successful HTTP-level response (even if 4xx/5xx)
+        consecutiveNetErrors = 0;
+      }
+    }
+    return Promise.reject(error);
+  });
+  // Reset counters on any successful response
+  axios.interceptors.response.use(r => { consecutiveNetErrors = 0; return r; });
 }

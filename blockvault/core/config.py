@@ -18,9 +18,14 @@ class Config:
     ipfs_enabled: bool = False
     ipfs_gateway_url: str | None = None
     eth_rpc_url: str | None = None
+    eth_private_key: str | None = None
+    # Legacy on-chain RBAC removed; keep placeholders for backward compat (always None)
     role_registry_address: str | None = None
+    file_access_contract: str | None = None
+    file_registry_address: str | None = None  # new on-chain file registry (optional)
     cors_allowed_origins: str | None = None
     app_name: str = "BlockVault"
+    access_manager_address: str | None = None  # deprecated (kept for backward compatibility, always None)
 
 
 def load_config() -> Config:
@@ -35,8 +40,12 @@ def load_config() -> Config:
     ipfs_enabled = os.getenv("IPFS_ENABLED", "false").lower() in {"1", "true", "yes"}
     ipfs_gateway_url = os.getenv("IPFS_GATEWAY_URL")
     eth_rpc_url = os.getenv("ETH_RPC_URL")
-    role_registry_address = os.getenv("ROLE_REGISTRY_ADDRESS")
+    eth_private_key = os.getenv("ETH_PRIVATE_KEY")
+    role_registry_address = None
+    file_access_contract = None
     cors_allowed_origins = os.getenv("CORS_ALLOWED_ORIGINS")
+    file_registry_address = os.getenv("FILE_REGISTRY_ADDRESS")
+    access_manager_address = None  # removed feature; ignore env/manifest
     return Config(
         env=env,
         debug=debug,
@@ -49,6 +58,10 @@ def load_config() -> Config:
         ipfs_enabled=ipfs_enabled,
         ipfs_gateway_url=ipfs_gateway_url,
         eth_rpc_url=eth_rpc_url,
+        eth_private_key=eth_private_key,
         role_registry_address=role_registry_address,
+        file_access_contract=file_access_contract,
+        file_registry_address=file_registry_address,
         cors_allowed_origins=cors_allowed_origins,
+        access_manager_address=access_manager_address,
     )

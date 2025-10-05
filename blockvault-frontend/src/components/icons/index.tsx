@@ -14,7 +14,8 @@ export type IconName =
   | 'share'
   | 'user'
   | 'key'
-  | 'clock';
+  | 'clock'
+  | 'eye';
 
 interface IconProps { name: IconName; size?: number; className?: string; strokeWidth?: number; }
 
@@ -64,6 +65,9 @@ export const Icon: React.FC<IconProps & Omit<React.SVGProps<SVGSVGElement>, 'ref
     );
     case 'clock': return (
       <svg {...p} {...rest}><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+    );
+    case 'eye': return (
+      <svg {...p} {...rest}><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12Z"/><circle cx="12" cy="12" r="3"/></svg>
     );
     default: return null;
   }

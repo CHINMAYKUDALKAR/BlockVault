@@ -9,6 +9,7 @@ from cryptography.hazmat.primitives import serialization
 from ..core.db import get_db
 from ..core.security import require_auth
 from ..core.rbac import Role, ensure_role, role_name
+from flask import current_app
 
 bp = Blueprint("users", __name__)
 

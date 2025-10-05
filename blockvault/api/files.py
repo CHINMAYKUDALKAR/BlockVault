@@ -9,7 +9,6 @@ import hashlib
 from typing import Dict, Any, List, Optional, Tuple
 
 from flask import Blueprint, request, abort, send_file
-from web3 import Web3
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
@@ -22,7 +21,16 @@ from ..core.crypto_cli import (
     generate_encrypted_filename,
 )
 from ..core import ipfs as ipfs_mod
-from ..core.rbac import Role, ensure_role
+from ..core import onchain as onchain_mod
+
+# Simplified role constants (on-chain RBAC removed)
+class Role:
+    VIEWER = 1
+    OWNER = 2
+    ADMIN = 3
+
+def ensure_role(_min_role: int):  # no-op: all authenticated users act as owners
+    return True
 
 bp = Blueprint("files", __name__)
 
@@ -37,6 +45,11 @@ def _shares_collection():
 
 def _users_collection():
     return get_db()["users"]
+
+
+def _file_access_collection():
+    # Off-chain convenience index of granted on-chain roles (for UI listing only)
+    return get_db()["file_access_roles"]
 
 
 def _canonical_file_id(rec: Dict[str, Any], fallback: str) -> str:
@@ -123,6 +136,11 @@ def upload_file():  # type: ignore
     if not key:
         abort(400, "key (passphrase) required")
     aad = request.form.get("aad") or None
+    folder = request.form.get("folder") or None
+    if folder is not None:
+        folder = folder.strip() or None
+        if folder and len(folder) > 120:
+            abort(400, "folder name too long (max 120 chars)")
 
     original_name = up_file.filename
     data = up_file.read()
@@ -154,6 +172,12 @@ def upload_file():  # type: ignore
 
     sha256 = hashlib.sha256(data).hexdigest()
 
+    anchor_tx = None
+    try:
+        anchor_tx = onchain_mod.anchor_file(sha256, len(data), cid)
+    except Exception:
+        anchor_tx = None
+
     record = {
         "owner": getattr(request, "address"),
         "original_name": original_name,
@@ -164,9 +188,11 @@ def upload_file():  # type: ignore
         "aad": aad,
         "sha256": sha256,
         "cid": cid,
+        "anchor_tx": anchor_tx,
+        "folder": folder,
     }
     ins = _files_collection().insert_one(record)
-    resp = {"file_id": str(ins.inserted_id), "name": original_name, "sha256": sha256, "cid": cid, "gateway_url": None}
+    resp = {"file_id": str(ins.inserted_id), "name": original_name, "sha256": sha256, "cid": cid, "gateway_url": None, "anchor_tx": anchor_tx}
     if cid:
         resp["gateway_url"] = ipfs_mod.gateway_url(cid)
     return resp
@@ -178,14 +204,12 @@ def download_file(file_id: str):  # type: ignore
     key = request.args.get("key") or request.headers.get("X-File-Key")
     if not key:
         abort(400, "key required (query ?key= or X-File-Key header)")
+    inline = request.args.get("inline") == "1"
 
     rec, canonical_id = _lookup_file(file_id)
     owner = rec.get("owner")
     requester = getattr(request, "address")
-    if owner == requester:
-        ensure_role(Role.OWNER)
-    else:
-        ensure_role(Role.VIEWER)
+    if owner != requester:
         share = _shares_collection().find_one({"file_id": canonical_id, "recipient": requester})
         if not share:
             abort(404, "file not found")
@@ -226,7 +250,12 @@ def download_file(file_id: str):  # type: ignore
             except OSError:
                 pass
 
-        return send_file(io.BytesIO(data), as_attachment=True, download_name=rec["original_name"])
+        return send_file(
+            io.BytesIO(data),
+            as_attachment=not inline,
+            download_name=rec["original_name"],
+            mimetype=None if not inline else "application/octet-stream",
+        )
     except Exception as e:  # unexpected
         # Log stack for diagnostics
         tb = traceback.format_exc(limit=6)
@@ -256,26 +285,28 @@ def list_files():  # type: ignore
         after_i = int(after) if after else None
     except ValueError:
         abort(400, "after must be int timestamp")
+    q = (request.args.get("q") or "").strip() or None
+    folder_filter = (request.args.get("folder") or "").strip() or None
 
     owner = getattr(request, "address")
-    # Debug trace header optional
     if request.headers.get('X-Debug-Files') == '1':
-        print(f"[DEBUG] list_files owner={owner} after={after_i} limit={limit}")
+        print(f"[DEBUG] list_files owner={owner} after={after_i} limit={limit} q={q} folder={folder_filter}")
     coll = _files_collection()
 
     items: List[Dict[str, Any]] = []
-    # Memory DB: brute force iteration. Mongo: use find with filter & sort
     try:
-        # Detect pymongo by attribute
         from pymongo.collection import Collection  # type: ignore
         if isinstance(coll, Collection):  # type: ignore[arg-type]
-            flt = {"owner": owner}
+            flt: Dict[str, Any] = {"owner": owner}
+            if folder_filter:
+                flt["folder"] = folder_filter
             if after_i is not None:
                 flt["created_at"] = {"$gt": after_i}
+            if q:
+                flt["original_name"] = {"$regex": q, "$options": "i"}
             cursor = coll.find(flt).sort("created_at", 1).limit(limit + 1)
             for idx, doc in enumerate(cursor):
                 if idx >= limit:
-                    # over-fetched; indicates has_more
                     items.append({"_extra": True, "_created_at": doc.get("created_at")})
                     break
                 items.append({
@@ -286,17 +317,21 @@ def list_files():  # type: ignore
                     "aad": doc.get("aad"),
                     "sha256": doc.get("sha256"),
                     "cid": doc.get("cid"),
+                        "anchor_tx": doc.get("anchor_tx"),
                     "gateway_url": ipfs_mod.gateway_url(doc.get("cid")) if doc.get("cid") else None,
+                    "folder": doc.get("folder"),
                 })
         else:
-            # Memory collection: access underlying store via simple attribute
             store = getattr(coll, '_store', {})  # type: ignore[attr-defined]
-            docs = list(store.values())
-            docs = [d for d in docs if d.get("owner") == owner]
+            docs = [d for d in store.values() if d.get("owner") == owner]
+            if folder_filter:
+                docs = [d for d in docs if (d.get("folder") or None) == folder_filter]
+            if q:
+                low_q = q.lower()
+                docs = [d for d in docs if low_q in (d.get("original_name") or "").lower()]
             if after_i:
                 docs = [d for d in docs if d.get("created_at", 0) > after_i]
             docs.sort(key=lambda d: d.get("created_at", 0))
-            # Over-fetch technique for memory too
             over_docs = docs[:limit + 1]
             for d in over_docs:
                 if len(items) >= limit:
@@ -310,15 +345,16 @@ def list_files():  # type: ignore
                     "aad": d.get("aad"),
                     "sha256": d.get("sha256"),
                     "cid": d.get("cid"),
+                    "anchor_tx": d.get("anchor_tx"),
                     "gateway_url": ipfs_mod.gateway_url(d.get("cid")) if d.get("cid") else None,
+                    "folder": d.get("folder"),
                 })
-    except Exception as e:  # fallback generic
+    except Exception as e:
         abort(500, f"list failed: {e}")
+
     has_more = False
-    # Remove any over-fetch marker
     if items and items[-1].get("_extra"):
         has_more = True
-        # Drop marker document
         items = items[:-1]
     next_after = items[-1]["created_at"] if items else None
     return {"items": items, "next_after": next_after, "has_more": has_more}
@@ -362,6 +398,81 @@ def delete_file(file_id: str):  # type: ignore
     except Exception:
         pass
     return {"status": "deleted", "file_id": file_id}
+
+
+@bp.patch("/<file_id>", strict_slashes=False)
+@require_auth
+def update_file(file_id: str):  # type: ignore
+    """Update mutable file metadata (folder, name).
+
+    Only the owner may update. Name change does not affect stored encrypted blob.
+    """
+    ensure_role(Role.OWNER)
+    owner = getattr(request, "address")
+    rec, canonical_id = _lookup_file(file_id)
+    if rec.get("owner") != owner:
+        abort(403, "only owner can update file")
+    data = request.get_json(silent=True) or {}
+    new_folder = data.get("folder") if "folder" in data else None
+    rename = data.get("name") if "name" in data else None
+    update: Dict[str, Any] = {}
+    if new_folder is not None:
+        if new_folder:
+            if not isinstance(new_folder, str):
+                abort(400, "folder must be string")
+            nf = new_folder.strip()
+            if len(nf) > 120:
+                abort(400, "folder name too long (max 120 chars)")
+            update["folder"] = nf
+        else:
+            update["folder"] = None
+    if rename is not None:
+        if not isinstance(rename, str) or not rename.strip():
+            abort(400, "name must be non-empty string")
+        if len(rename) > 255:
+            abort(400, "name too long (max 255 chars)")
+        update["original_name"] = rename.strip()
+    if not update:
+        return {"updated": False, "file_id": canonical_id}
+    _files_collection().update_one({"_id": rec.get("_id")}, {"$set": update})
+    new_rec = _maybe_get_file(canonical_id) or rec
+    return {"updated": True, "file_id": canonical_id, "name": new_rec.get("original_name"), "folder": new_rec.get("folder")}
+
+
+@bp.get("/folders", strict_slashes=False)
+@require_auth
+def list_folders():  # type: ignore
+    """List distinct non-null folder names for current owner."""
+    ensure_role(Role.OWNER)
+    owner = getattr(request, "address")
+    coll = _files_collection()
+    folders: List[str] = []
+    try:
+        from pymongo.collection import Collection  # type: ignore
+        if hasattr(coll, 'distinct'):
+            try:
+                raw = coll.distinct("folder", {"owner": owner})  # type: ignore
+                folders = [f for f in raw if f]
+            except Exception:
+                pass
+        if not folders:
+            # Fallback manual scan
+            if isinstance(coll, Collection):  # type: ignore[arg-type]
+                for d in coll.find({"owner": owner, "folder": {"$ne": None}}):
+                    f = d.get("folder")
+                    if f and f not in folders:
+                        folders.append(f)
+            else:
+                store = getattr(coll, '_store', {})  # type: ignore[attr-defined]
+                for d in store.values():
+                    if d.get("owner") == owner:
+                        f = d.get("folder")
+                        if f and f not in folders:
+                            folders.append(f)
+    except Exception:
+        pass
+    folders.sort(key=str.lower)
+    return {"folders": folders}
 
 
 @bp.get("/<file_id>/verify", strict_slashes=False)
@@ -420,9 +531,8 @@ def share_file(file_id: str):  # type: ignore
     if note and len(note) > 280:
         abort(400, "note too long (max 280 chars)")
 
-    try:
-        recipient_addr = Web3.to_checksum_address(recipient)
-    except Exception:
+    recipient_addr = recipient.strip().lower()
+    if not recipient_addr.startswith('0x') or len(recipient_addr) != 42:
         abort(400, "invalid recipient address")
     if recipient_addr == owner:
         abort(400, "cannot share with yourself")
@@ -585,3 +695,8 @@ def revoke_share(share_id: str):  # type: ignore
         "status": "revoked",
         "share_id": share_id,
     }
+
+
+# ---------------------- On-chain File Access (off-chain index) ----------------------
+
+## On-chain access endpoints removed

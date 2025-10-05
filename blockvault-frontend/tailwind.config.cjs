@@ -3,6 +3,23 @@ module.exports = {
     './index.html',
     './src/**/*.{js,ts,jsx,tsx}',
   ],
+  // Safelist critical style tokens used in JS string maps (prevents purge removing them)
+  safelist: [
+    // Text / color
+    'text-white', 'text-text-primary', 'text-text-secondary', 'text-accent-blue',
+    // Gradients / backgrounds
+    'bg-gradient-to-r', 'from-accent-blue', 'to-accent-teal',
+    'bg-accent-red/80', 'hover:bg-accent-red', 'bg-background-tertiary/60',
+    'bg-transparent', 'hover:bg-accent-blue/10',
+    // Borders / effects
+    'border', 'border-transparent', 'border-border', 'border-accent-red/60', 'border-accent-blue/60',
+    'hover:border-accent-blue/60',
+    // Hover / active states
+    'hover:brightness-110', 'hover:text-accent-blue/90', 'hover:text-accent-blue',
+    'active:scale-[.97]',
+    // Shadows
+    'shadow-glow', 'hover:shadow-[0_0_0_1px_#00C0FF]'
+  ],
   theme: {
     extend: {
       fontFamily: {

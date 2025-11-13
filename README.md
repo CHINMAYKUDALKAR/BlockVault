@@ -1,462 +1,326 @@
-# 🔐 BlockVault - Secure File Storage & Legal Document Management
+# BlockVault
 
-<div align="center">
+BlockVault is a secure file storage and sharing platform engineered for high-stakes legal environments. At its core, it provides encrypted document vaults, granular sharing controls, and verifiable access logs—ensuring every file exchange is private, auditable, and tamper resistant. Sitting on top of this foundation is an AI-assisted legal workflow engine that brings case management, redaction, and blockchain notarization into a single, modern workspace.
 
-![BlockVault](https://img.shields.io/badge/BlockVault-v2.0-6366f1?style=for-the-badge)
-![Blockchain](https://img.shields.io/badge/Blockchain-Ethereum-627eea?style=for-the-badge)
-![ZK-Proofs](https://img.shields.io/badge/ZK--Proofs-Enabled-10b981?style=for-the-badge)
-![React](https://img.shields.io/badge/React-18.x-61dafb?style=for-the-badge)
-![Python](https://img.shields.io/badge/Python-3.9+-3776ab?style=for-the-badge)
-
-**Enterprise-grade decentralized file storage with zero-knowledge proofs and blockchain verification**
-
-Made with ❤️ in India 🇮🇳
-
-[Features](#-features) • [Installation](#-installation) • [Architecture](#-architecture) • [Documentation](#-documentation) • [Contributing](#-contributing)
-
-</div>
+This README walks through the platform’s key features, architecture at a high level, full setup instructions (macOS/Linux and Windows), day-to-day usage, and tips for troubleshooting or extending the system.
 
 ---
 
-## 🌟 Overview
+## Platform Highlights
 
-BlockVault is a cutting-edge decentralized application (dApp) that combines secure file storage with advanced legal document management capabilities. Built on Ethereum with zero-knowledge proof technology, it provides enterprise-level security while maintaining complete user privacy.
+- **Zero-Trust File Vaults**
+  - End-to-end encryption for every document version with optional hardware-key support.
+  - IPFS-backed storage ensures resilience while keeping content private.
 
-### 🎯 Key Highlights
+- **Granular Sharing & Collaboration**
+  - Issue time-boxed, permission-scoped share links or collaborative workspaces.
+  - Real-time audit trails capture every view, download, signature, and transfer.
 
-- **🔒 End-to-End Encryption** - Military-grade AES-256 encryption
-- **🌐 Decentralized Storage** - IPFS integration for distributed file storage
-- **⚖️ Legal Document Management** - Smart contract-based document lifecycle
-- **🤖 AI-Powered Analysis** - ZKML (Zero-Knowledge Machine Learning) document analysis
-- **🔐 Zero-Knowledge Proofs** - ZKPT for verifiable document redaction
-- **👥 Role-Based Access Control** - Granular permission management
-- **📜 Blockchain Verification** - Immutable chain of custody
-- **💼 Multi-Signature Support** - Secure document signing workflows
+- **Blockchain-Assured Integrity**
+  - On-chain hashing and notarization of uploads, redactions, and approvals.
+  - Zero-knowledge proofs verify authenticity without exposing document contents.
 
----
+- **Wallet-Backed Access Control**
+  - WalletConnect-based authentication and transaction signing for sensitive operations.
+  - Smart-contract RBAC keeps ownership clear across internal teams and external partners.
 
-## ✨ Features
+- **Legal Workflow Automation**
+  - Case-centric organization, task tracking, and role assignments.
+  - AI-powered redaction suggestions, review cycles, and compliance templates.
 
-### 📁 File Management
-- **Secure Upload** - Encrypted file upload with IPFS storage
-- **Version Control** - Track document versions with blockchain timestamps
-- **Share & Collaborate** - Time-limited, password-protected file sharing
-- **Advanced Search** - Full-text search with filters and sorting
-- **Bulk Operations** - Multi-file upload, download, and deletion
-
-### ⚖️ Legal Document Management
-- **Document Notarization** - Blockchain-anchored document registration
-- **Verifiable Redaction (ZKPT)** - Prove redactions without revealing content
-- **AI Document Analysis (ZKML)** - Extract insights with cryptographic proofs
-- **Multi-Party Signatures** - Collect signatures with escrow support
-- **Case Management** - Organize documents by legal cases
-- **Chain of Custody** - Complete audit trail with blockchain verification
-- **Role-Based Permissions** - Lead Attorney, Associate, Paralegal, Client, External Counsel
-
-### 🔐 Security Features
-- **Wallet Authentication** - MetaMask & WalletConnect integration
-- **RSA Key Encryption** - Client-side key generation and management
-- **Passphrase Protection** - Additional layer for sensitive files
-- **Access Revocation** - Instantly revoke document access
-- **Emergency Pause** - Contract-level emergency stop mechanism
-- **Escrow Refunds** - Automatic refund for expired signature requests
-
-### 🎨 User Experience
-- **Modern UI/UX** - Premium glassmorphism design
-- **Light/Dark Mode** - Seamless theme switching
-- **Responsive Design** - Mobile, tablet, and desktop optimized
-- **Keyboard Shortcuts** - Power-user productivity features
-- **Real-time Updates** - Live status indicators and notifications
-- **Smooth Animations** - 60fps hardware-accelerated transitions
+- **Regulatory-Grade Compliance**
+  - Detailed activity logs, retention policies, and exportable compliance reports.
+  - Built-in support for jurisdiction-specific confidentiality and discovery rules.
 
 ---
 
-## 🏗️ Architecture
+## System Overview
 
-### Technology Stack
+| Layer      | Technology | Description |
+|-----------|------------|-------------|
+| Frontend  | React (Vite + TypeScript) | Rich single-page application handling dashboard, case UI, blockchain explorer, and sharing modals. |
+| Backend   | Flask (Python)            | REST API, authentication, redaction services, RBAC, blockchain event sync. |
+| Blockchain| Solidity smart contracts  | Manages legal case metadata, evidence hashes, and access proofs on-chain. |
+| Crypto    | Rust helper (FFI)         | High-performance cryptographic operations invoked by the backend. |
+| Storage   | IPFS + Encrypted Local    | Files are encrypted client-side; metadata & versions tracked via IPFS hooks. |
+| AI/ML     | Python-based redaction service | Zero-shot / pattern-based PII detection with manual review workflow. |
 
-#### Frontend
-- **React 18** - Modern UI library with hooks
-- **TypeScript** - Type-safe development
-- **Tailwind CSS** - Utility-first styling
-- **Ethers.js v6** - Ethereum interactions
-- **React Router** - Client-side routing
-- **React Hot Toast** - Beautiful notifications
-
-#### Backend
-- **Flask** - Python web framework
-- **MongoDB** - NoSQL database
-- **IPFS** - Distributed file storage
-- **JWT** - Secure authentication
-- **Cryptography** - RSA & AES encryption
-
-#### Blockchain
-- **Solidity 0.8.x** - Smart contract language
-- **Hardhat** - Development environment
-- **OpenZeppelin** - Audited contract libraries
-- **Ethereum** - Blockchain platform
-
-#### ML/AI (Optional)
-- **TensorFlow** - ML model training
-- **ONNX Runtime** - Model inference
-- **Zero-Knowledge ML** - Privacy-preserving AI
-
-### System Architecture
+### Directory Map (High-Level)
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                     Frontend (React)                     │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌─────────┐│
-│  │  Files   │  │  Legal   │  │  Auth    │  │  Theme  ││
-│  │Dashboard │  │Dashboard │  │ Context  │  │ Context ││
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └─────────┘│
-└───────┼─────────────┼─────────────┼──────────────────────┘
-        │             │             │
-        ├─────────────┼─────────────┤
-        │             │             │
-┌───────▼─────────────▼─────────────▼──────────────────────┐
-│                Backend API (Flask)                        │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌─────────┐│
-│  │  Files   │  │  Legal   │  │   IPFS   │  │  Auth   ││
-│  │ Endpoints│  │Endpoints │  │Integration│  │ JWT    ││
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬────┘│
-└───────┼─────────────┼─────────────┼──────────────┼──────┘
-        │             │             │              │
-        ├─────────────┼─────────────┼──────────────┤
-        │             │             │              │
-┌───────▼─────────────▼─────────────▼──────────────▼──────┐
-│                Storage & Blockchain                       │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌─────────┐│
-│  │ MongoDB  │  │   IPFS   │  │ Ethereum │  │  RSA    ││
-│  │(Metadata)│  │  (Files) │  │  (Smart  │  │  Keys   ││
-│  │          │  │          │  │Contracts)│  │         ││
-│  └──────────┘  └──────────┘  └──────────┘  └─────────┘│
-└────────────────────────────────────────────────────────┘
+BlockVault/
+├── app.py                      # Flask entry point
+├── blockvault/                 # Backend modules & services
+├── blockvault-frontend-new/    # React + Vite frontend
+├── blockvault_crypto/          # Rust crypto bridge
+├── contracts/                  # Solidity smart contracts
+├── scripts/                    # Helper scripts (DB setup, backups)
+├── start.sh                    # macOS/Linux startup helper
+├── start_windows.ps1           # Windows startup helper
+└── requirements.txt            # Backend Python dependencies
 ```
 
 ---
 
-## 🚀 Installation
+## Prerequisites
 
-### Prerequisites
+### Common Requirements
 
-- **Node.js** 16.x or higher
-- **Python** 3.9 or higher
-- **MongoDB** 4.4 or higher
-- **IPFS Desktop** or Kubo CLI
-- **MetaMask** browser extension
-- **Git**
+- Node.js LTS (≥ 18.x) and npm
+- Python 3.10+
+- MongoDB + Redis (or configure alternative stores in environment)
+- Rust toolchain (if building `blockvault_crypto` from source)
+- Git, curl, and lsof (macOS/Linux) / PowerShell 5.1+ (Windows)
 
-### Step 1: Clone Repository
+Ensure you copy `env.example` to `.env` (backend) and set Vite env values (`blockvault-frontend-new/.env`).
+
+### macOS / Linux
+- Bash shell (script assumes `/bin/bash`)
+- `python3`, `pip`, and a C compiler for any native deps
+- `curl` and `lsof` available on PATH
+
+### Windows
+- PowerShell 5.1 (Windows PowerShell) or PowerShell 7+
+- Python available as `python` or `py`
+- Node.js/npm installed system-wide
+- `Get-NetTCPConnection` available (included in recent Windows)
+
+---
+
+## Quick Start
+
+### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/BlockVault.git
+git clone https://github.com/<your-org>/BlockVault.git
 cd BlockVault
 ```
 
-### Step 2: Backend Setup
+### 2. Configure Environment
 
-```bash
-# Create Python virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+- Duplicate `env.example` → `.env` and fill in secrets.
+- Create `blockvault-frontend-new/.env` with any custom API endpoints (defaults point to Flask on `http://localhost:5000`).
 
-# Install Python dependencies
-pip install -r requirements.txt
+### 3. Install Dependencies
 
-# Start MongoDB (if not running)
-# MongoDB should be running on mongodb://localhost:27017
+> Both startup scripts auto-create the Python virtual environment and install npm packages if missing; manual steps are optional but documented for clarity.
 
-# Start IPFS daemon
-ipfs daemon
+- **Backend (manual):**
 
-# Run backend server
-cd backend
-python app.py
-```
+  ```bash
+  python3 -m venv venv
+  source venv/bin/activate          # On macOS/Linux
+  pip install -r requirements.txt
+  ```
 
-The backend will start on `http://localhost:5000`
+- **Frontend (manual):**
 
-### Step 3: Frontend Setup
+  ```bash
+  cd blockvault-frontend-new
+  npm install
+  cd ..
+  ```
 
-```bash
-# Install Node dependencies
-cd blockvault-frontend
-npm install
+- **Rust Crypto (optional):**
 
-# Start development server
-npm start
-```
-
-The frontend will start on `http://localhost:3000`
-
-### Step 4: Smart Contract Deployment
-
-```bash
-# Install Hardhat dependencies
-cd contracts
-npm install
-
-# Compile contracts
-npx hardhat compile
-
-# Deploy to local network
-npx hardhat node  # In separate terminal
-npx hardhat run scripts/deploy.js --network localhost
-
-# Copy contract address and ABI to frontend config
-```
-
-### Step 5: Environment Configuration
-
-Create `.env` files in both backend and frontend:
-
-**Backend `.env`:**
-```env
-MONGODB_URI=mongodb://localhost:27017/blockvault
-IPFS_API_URL=http://127.0.0.1:5001
-JWT_SECRET=your-secure-jwt-secret-key-change-this
-FLASK_ENV=development
-```
-
-**Frontend `.env`:**
-```env
-REACT_APP_BACKEND_URL=http://localhost:5000
-REACT_APP_CONTRACT_ADDRESS=<your-deployed-contract-address>
-REACT_APP_IPFS_GATEWAY=https://ipfs.io/ipfs/
-```
+  ```bash
+  cd blockvault_crypto
+  cargo build --release
+  cd ..
+  ```
 
 ---
 
-## 📖 Usage
+## Starting the Platform
 
-### Connecting Wallet
+### Option A: macOS / Linux Script
 
-1. Install MetaMask browser extension
-2. Create or import an Ethereum wallet
-3. Visit `http://localhost:3000`
-4. Click "Connect Wallet" button
-5. Approve the connection in MetaMask
-
-### Uploading Files
-
-1. Navigate to "Files" tab
-2. Click "Upload File" button
-3. Select file(s) from your computer
-4. Optionally add passphrase protection
-5. Wait for encryption and IPFS upload
-6. File metadata stored in MongoDB, encrypted file in IPFS
-
-### Legal Document Management
-
-1. Navigate to "Legal" tab
-2. Click "Connect Wallet" if not authenticated
-3. Complete onboarding (select role and firm name)
-4. Click "Notarize Document" to register on blockchain
-5. Use advanced features:
-   - **Redaction**: Create verifiable redactions with ZKPT
-   - **AI Analysis**: Analyze documents with ZKML
-   - **Signatures**: Request multi-party signatures with escrow
-   - **Case Management**: Organize documents by cases
-
-### Sharing Files
-
-1. Find file in "My Files" tab
-2. Click "Share" icon
-3. Enter recipient's Ethereum address
-4. Set expiration time (optional)
-5. Add password protection (optional)
-6. Click "Share File"
-7. Share the passphrase with recipient securely
-
----
-
-## 🔒 Security
-
-### Smart Contract Security
-
-- **OpenZeppelin Libraries** - Audited contract components
-- **Custom Errors** - Gas-optimized error handling
-- **ReentrancyGuard** - Protection against reentrancy attacks
-- **Pausable** - Emergency stop mechanism
-- **Access Control** - Role-based permissions
-- **Input Validation** - Comprehensive parameter checking
-- **Escrow System** - Secure fund management
-
-### Cryptography
-
-- **AES-256-GCM** - File encryption
-- **RSA-2048** - Key encryption
-- **PBKDF2** - Password derivation
-- **SHA-256** - Hashing
-- **HMAC** - Message authentication
-
-### Best Practices
-
-- ✅ Never commit `.env` files
-- ✅ Use hardware wallets for production
-- ✅ Regular security audits
-- ✅ Keep dependencies updated
-- ✅ Enable 2FA on all accounts
-- ✅ Use strong passphrases
-- ✅ Verify contract addresses
-
----
-
-## 🧪 Testing
-
-### Frontend Tests
 ```bash
-cd blockvault-frontend
-npm test
+./start.sh
 ```
 
-### Backend Tests
-```bash
-cd backend
-python -m pytest tests/
+The script:
+1. Creates/activates `venv`, installs Python requirements if needed.
+2. Ensures frontend `node_modules` exist (runs `npm install` on first launch).
+3. Frees ports `5000` (Flask) and `3000` (Vite) when occupied.
+4. Starts backend (`app.py`) and frontend (`npm run dev`) in background.
+5. Waits for services on `http://localhost:5000` and `http://localhost:3000`.
+6. Opens your browser to the frontend (uses `open` on macOS or `xdg-open` elsewhere).
+7. Handles Ctrl+C shutdown by stopping both processes and cleaning logs.
+
+Logs: `backend.log`, `blockvault-frontend-new/frontend.log`
+
+### Option B: Windows (PowerShell)
+
+```powershell
+pwsh -ExecutionPolicy Bypass -File .\start_windows.ps1
+# or
+powershell.exe -ExecutionPolicy Bypass -File .\start_windows.ps1
 ```
 
-### Smart Contract Tests
+The PowerShell script mirrors the bash workflow, with logs at:
+- Backend stdout: `backend.log`
+- Backend stderr: `backend-error.log`
+- Frontend stdout: `blockvault-frontend-new/frontend.log`
+- Frontend stderr: `blockvault-frontend-new/frontend-error.log`
+
+Press `Ctrl+C` to stop both services; the script cleans them up automatically.
+
+### Manual Start (Advanced)
+
+Backend:
+```bash
+source venv/bin/activate
+FLASK_ENV=development python app.py
+```
+
+Frontend:
+```bash
+cd blockvault-frontend-new
+npm run dev
+```
+
+Smart Contracts:
 ```bash
 cd contracts
-npx hardhat test
-npx hardhat coverage
+npm install           # if Hardhat/Truffle used
+npm run deploy        # update network/config as needed
 ```
 
 ---
 
-## 📊 Smart Contract Details
+## Using BlockVault
 
-### BlockVaultLegal.sol
+### 1. Authenticate
+- Sign in via WalletConnect or supported EOA wallet.
+- Backend verifies signature and issues session token.
 
-**Key Functions:**
-- `registerDocument(bytes32 docHash, ...)` - Register document on blockchain
-- `grantAccess(bytes32 docHash, address user)` - Grant document access
-- `revokeAccess(bytes32 docHash, address user)` - Revoke document access
-- `requestSignaturesAndEscrow(...)` - Request signatures with escrow
-- `signDocument(bytes32 docHash, ...)` - Sign document with Ethereum signature
-- `cancelSignatureRequest(bytes32 docHash)` - Cancel and refund escrow
-- `revokeDocument(bytes32 docHash)` - Mark document as revoked
-- `verifyMLInference(...)` - Verify ZKML proofs
-- `pause()/unpause()` - Emergency controls
+### 2. Dashboard Overview
+- Recent activity feed with blockchain-backed events.
+- Quick links to Cases, Legal workflows, Files, and Settings.
 
-**Gas Optimizations:**
-- Custom errors instead of strings
-- Calldata for external functions
-- Efficient storage packing
-- Minimal SLOAD operations
+### 3. Case Management
+- Create/update cases, assign roles (Lead, Reviewer, Paralegal).
+- Upload documents/folders scoped to cases.
+- Track version history and blockchain notarization.
 
----
+### 4. Document Redaction & Processing
+- Upload raw files; AI redaction service suggests PII removals.
+- Preview redactions, accept/reject suggestions.
+- Publish redacted copy with on-chain proof.
 
-## 🎨 UI/UX Features
+### 5. Secure Sharing
+- Generate share links or invite external parties.
+- Configure view/download rights and expiration.
+- Access attempts recorded immutably on-chain.
 
-### Design System
+### 6. Blockchain Explorer
+- Visual timeline of notarized events.
+- Drill down to transaction details, proof metadata, and receipt hashes.
 
-- **Glassmorphism** - Modern frosted glass effects
-- **Gradient Accents** - Purple-cyan brand identity
-- **Micro-interactions** - Smooth hover and click effects
-- **Staggered Animations** - Sequential element appearances
-- **Loading States** - Skeleton screens and spinners
-- **Empty States** - Engaging placeholders
-- **Tooltips** - Contextual help throughout
-
-### Keyboard Shortcuts
-
-- `Ctrl/Cmd + K` - Focus search
-- `Ctrl/Cmd + R` - Refresh data
-- `Ctrl/Cmd + N` - New case (Legal dashboard)
-- `Escape` - Close modals
-- `Enter` - Confirm actions
-
-### Accessibility
-
-- WCAG AA compliance
-- Keyboard navigation
-- Screen reader support
-- Focus indicators
-- High contrast mode
-- 44px minimum touch targets
+### 7. Settings & Integrations
+- Manage organization/team roster, RBAC policies, notification preferences.
+- Configure legal templates, redaction patterns, and connected wallets.
 
 ---
 
-## 🤝 Contributing
+## Environment Variables
 
-We welcome contributions! Please follow these steps:
+| Variable | Description |
+|----------|-------------|
+| `FLASK_ENV` | Backend mode (`development`, `production`) |
+| `SECRET_KEY` | Flask session secret |
+| `DATABASE_URL` | MongoDB connection string |
+| `REDIS_URL` | Redis for job queues/cache |
+| `IPFS_GATEWAY` | IPFS pinning service/gateway |
+| `BLOCKCHAIN_RPC_URL` | RPC node for contract interactions |
+| `VITE_API_BASE_URL` | Frontend API base |
+| `VITE_WALLETCONNECT_PROJECT_ID` | WalletConnect project ID |
 
-1. **Fork the repository**
-2. **Create a feature branch** (`git checkout -b feature/amazing-feature`)
-3. **Commit your changes** (`git commit -m 'Add amazing feature'`)
-4. **Push to the branch** (`git push origin feature/amazing-feature`)
-5. **Open a Pull Request**
-
-### Development Guidelines
-
-- Follow existing code style
-- Write meaningful commit messages
-- Add tests for new features
-- Update documentation
-- Ensure all tests pass
-- Check for linting errors
+Refer to `env.example` for the full list and defaults.
 
 ---
 
-## 📝 License
+## Troubleshooting
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+- **Ports already in use**: Scripts auto-kill conflicting processes, but manual steps:
+  ```bash
+  lsof -i :5000
+  kill -9 <pid>
+  ```
+  On Windows: `Get-NetTCPConnection -LocalPort 5000 | Stop-Process`
 
----
+- **Backend not responding**:
+  - Check `backend.log` / `backend-error.log`.
+  - Ensure MongoDB/Redis are reachable with correct credentials.
+  - Verify environment variables are set.
 
-## 🙏 Acknowledgments
+- **Frontend build issues**:
+  - Delete `blockvault-frontend-new/node_modules` and rerun `npm install`.
+  - Confirm Node.js version (18+).
 
-- **OpenZeppelin** - Smart contract libraries
-- **IPFS** - Decentralized storage protocol
-- **Ethereum** - Blockchain platform
-- **React Team** - Frontend framework
-- **Tailwind Labs** - CSS framework
-- **Lucide Icons** - Beautiful icon set
+- **Smart contract mismatches**:
+  - Ensure ABI files match deployed contracts.
+  - Redeploy contracts and update environment variables.
 
----
-
-## 📞 Support
-
-For support, email support@blockvault.io or join our Discord community.
-
-### Useful Links
-
-- **Documentation**: [docs.blockvault.io](https://docs.blockvault.io)
-- **API Reference**: [api.blockvault.io](https://api.blockvault.io)
-- **Discord**: [discord.gg/blockvault](https://discord.gg/blockvault)
-- **Twitter**: [@BlockVault](https://twitter.com/BlockVault)
+- **Wallet connection problems**:
+  - Confirm WalletConnect Project ID.
+  - Clear local storage or try another browser profile.
 
 ---
 
-## 🗺️ Roadmap
+## Development Tips
 
-### Q1 2025
-- [ ] Multi-chain support (Polygon, BSC)
-- [ ] Mobile app (React Native)
-- [ ] Advanced ZKML models
-- [ ] Team collaboration features
-
-### Q2 2025
-- [ ] Decentralized identity (DID)
-- [ ] NFT document certificates
-- [ ] DAO governance
-- [ ] Enterprise licensing
-
-### Q3 2025
-- [ ] Full IPFS node integration
-- [ ] Filecoin storage
-- [ ] Layer 2 scaling
-- [ ] API marketplace
+- **Hot Reload**: Vite handles frontend HMR; Flask reloads if `FLASK_ENV=development`.
+- **Testing**:
+  - Backend: `pytest` or `python -m unittest`.
+  - Frontend: `npm run test` (set up React Testing Library/Jest).
+  - Smart contracts: Hardhat/Foundry as configured.
+- **Linting**:
+  - Backend: `flake8` / `black`.
+  - Frontend: `npm run lint`.
 
 ---
 
-<div align="center">
+## Deployment
 
-**Built with 💜 by the BlockVault Team**
+- Use `docker-compose.yml` or `docker-compose.prod.yml` for containerized deployments.
+- `render.yaml`, `netlify.toml`, and `Makefile` provide deployment hooks for cloud platforms.
+- Ensure production secrets are injected via environment variables or secret management.
 
-⭐ Star us on GitHub — it helps!
+---
 
-</div>
+## Roadmap & Contributions
+
+1. Additional zero-knowledge templates for region-specific compliance.
+2. Expanded AI models for optical character recognition and translation.
+3. Enhanced analytics dashboards and API integrations (Clio, iManage).
+
+Contributions welcome! Submit pull requests, file issues, or contact the maintainers.
+
+---
+
+## License
+
+This project is licensed under the MIT License (see `LICENSE` if present or update accordingly).
+
+---
+
+### Support
+
+For questions, bug reports, or feature requests:
+- GitHub Issues
+- Email: support@blockvault.example (replace with your org’s contact)
+- Community: Join the BlockVault Discord/Slack (if available)
+
+Thank you for building secure legal workflows with BlockVault. 🔐✨
+
+---
+
+<p align="center">
+  <a href="https://madewithloveinindia.org" target="_blank" rel="noreferrer noopener" style="text-decoration:none; font-weight:600;">
+    <span style="display:inline-flex; align-items:center; gap:0.35rem; padding:0.65rem 1.2rem; border-radius:999px; border:1px solid rgba(148, 163, 184, 0.4); background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.85)); box-shadow: 0 10px 30px rgba(15, 23, 42, 0.35); color:#f8fafc;">
+      Made with <span aria-label="Love" style="color:#f43f5e;">&#10084;&#65039;</span> in India
+    </span>
+  </a>
+</p>

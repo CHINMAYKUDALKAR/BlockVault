@@ -52,6 +52,14 @@ def _file_access_collection():
     return get_db()["file_access_roles"]
 
 
+def _chain_of_custody_collection():
+    return get_db()["chain_of_custody"]
+
+
+def _blockchain_transactions_collection():
+    return get_db()["blockchain_transactions"]
+
+
 def _canonical_file_id(rec: Dict[str, Any], fallback: str) -> str:
     if rec.get("_id") is not None:
         return str(rec["_id"])
@@ -201,7 +209,76 @@ def upload_file():  # type: ignore
         "folder": folder,
     }
     ins = _files_collection().insert_one(record)
-    resp = {"file_id": str(ins.inserted_id), "name": original_name, "sha256": sha256, "cid": cid, "gateway_url": None, "anchor_tx": anchor_tx}
+    file_id = str(ins.inserted_id)
+
+    try:
+        chain_entry = {
+            "file_id": file_id,
+            "documentId": file_id,
+            "documentName": original_name,
+            "owner": record["owner"],
+            "user": record["owner"],
+            "actor": record["owner"],
+            "action": "Document Uploaded",
+            "type": "creation",
+            "event_type": "creation",
+            "timestamp": record["created_at"],
+            "hash": sha256,
+            "cid": cid,
+            "ipfs": cid,
+            "txHash": anchor_tx,
+            "verified": bool(anchor_tx),
+            "status": "uploaded",
+            "details": {
+                "size": len(data),
+                "folder": folder,
+                "aad": aad,
+                "filename": original_name,
+            },
+        }
+        _chain_of_custody_collection().insert_one(chain_entry)
+    except Exception as exc:
+        current_app.logger.warning(
+            "Failed to record chain of custody event for file %s: %s",
+            file_id,
+            exc,
+            exc_info=True,
+        )
+
+    try:
+        simulated = bool(anchor_tx and str(anchor_tx).startswith("simulated::"))
+        tx_status = "confirmed" if anchor_tx and not simulated else ("pending" if anchor_tx else "recorded")
+        transaction = {
+            "file_id": file_id,
+            "tx_hash": anchor_tx,
+            "txHash": anchor_tx,
+            "tx_type": "upload",
+            "txType": "upload",
+            "status": tx_status,
+            "timestamp": record["created_at"],
+            "from": record["owner"],
+            "to": record["owner"],
+            "user_address": record["owner"],
+            "network": current_app.config.get("CHAIN_NETWORK") or current_app.config.get("ETH_NETWORK") or "unknown",
+            "amount": len(data),
+            "metadata": {
+                "fileName": original_name,
+                "sha256": sha256,
+                "cid": cid,
+                "folder": folder,
+                "anchorTxSimulated": simulated,
+            },
+        }
+        _blockchain_transactions_collection().insert_one(transaction)
+    except Exception as exc:
+        current_app.logger.warning(
+            "Failed to record blockchain transaction for file %s: %s",
+            file_id,
+            exc,
+            exc_info=True,
+        )
+
+    resp = {"file_id": file_id, "name": original_name, "sha256": sha256, "cid": cid, "gateway_url": None, "anchor_tx": anchor_tx}
     if cid:
         resp["gateway_url"] = ipfs_mod.gateway_url(cid)
     return resp
@@ -265,6 +342,10 @@ def download_file(file_id: str):  # type: ignore
             filename = rec["original_name"].lower()
             if filename.endswith('.pdf'):
                 mimetype = 'application/pdf'
+            elif filename.endswith('.docx'):
+                mimetype = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            elif filename.endswith('.doc'):
+                mimetype = 'application/msword'
             elif filename.endswith(('.png', '.jpg', '.jpeg')):
                 mimetype = 'image/jpeg' if filename.endswith(('.jpg', '.jpeg')) else 'image/png'
             elif filename.endswith('.gif'):

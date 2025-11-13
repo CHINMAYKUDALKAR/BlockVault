@@ -19,16 +19,33 @@ decorate endpoints accordingly.
 
 from typing import Any as _Any  # avoid unused import lint complaints
 
-def _attach_default_role(address: str) -> None:
-    """Attach a default implicit role to the request context.
+_ROLE_VALUE_BY_SLUG = {
+    "none": 0,
+    "viewer": 1,
+    "editor": 2,
+    "owner": 2,
+    "admin": 3,
+}
 
-    We mimic the old interface (setting request.role) so existing endpoint code
-    that references request.role / role_name keeps functioning without change.
-    Role numeric values kept for minimal compatibility: OWNER = 2.
-    """
+
+def _attach_role(address: str) -> None:
+    """Attach resolved role information to the request context."""
     from flask import request as _req
-    _req.role = 2  # OWNER
-    _req.role_name = "owner"
+    from .db import get_db
+
+    role_slug = "owner"
+    try:
+        db = get_db()
+        assignment = db["rbac_role_assignments"].find_one({"address": address.lower()})
+        if assignment and assignment.get("role"):
+            role_slug = str(assignment["role"]).lower()
+    except Exception as exc:
+        current_app.logger.warning("Failed to resolve RBAC role for %s: %s", address, exc)
+
+    role_value = _ROLE_VALUE_BY_SLUG.get(role_slug, 2)
+    _req.role = role_value  # type: ignore[attr-defined]
+    _req.role_name = role_slug  # type: ignore[attr-defined]
+    _req.role_slug = role_slug  # type: ignore[attr-defined]
 
 
 def generate_jwt(payload: Dict[str, Any]) -> str:
@@ -68,7 +85,7 @@ def require_auth(fn: F) -> F:
             abort(401, "invalid subject")
         # Attach to request context (not thread safe across greenlets, but fine here)
         request.address = sub  # type: ignore[attr-defined]
-        _attach_default_role(sub)
+        _attach_role(sub)
         return fn(*args, **kwargs)
 
     return cast(F, wrapper)

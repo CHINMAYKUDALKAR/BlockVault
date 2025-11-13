@@ -8,6 +8,11 @@ from .api.auth import bp as auth_bp
 from .api.files import bp as files_bp
 from .api.users import bp as users_bp
 from .api.settings import bp as settings_bp
+from .api.cases import cases_bp
+from .api.legal import legal_bp
+from .api.blockchain import blockchain_bp
+from .api.rbac import rbac_bp
+from .api.redact import redact_bp
 
 def create_app() -> Flask:
     app = Flask(__name__)
@@ -65,19 +70,21 @@ def create_app() -> Flask:
 
     app.register_blueprint(auth_bp, url_prefix="/auth")
     app.register_blueprint(files_bp, url_prefix="/files")
+    app.register_blueprint(redact_bp, url_prefix="/files")
     app.register_blueprint(users_bp, url_prefix="/users")
     app.register_blueprint(settings_bp, url_prefix="/settings")
+    app.register_blueprint(cases_bp)
+    app.register_blueprint(legal_bp)
+    app.register_blueprint(blockchain_bp)
+    app.register_blueprint(rbac_bp, url_prefix="/rbac")
     
-    # Register case management routes
-    from .mock_cases import register_case_routes
-    register_case_routes(app)
-
     @app.get('/status')
     def status():  # runtime capability flags for frontend label (Off-Chain / Anchored / Hybrid)
         import time
         import requests
         ipfs_enabled = bool(app.config.get('IPFS_ENABLED'))
         anchoring_enabled = bool(app.config.get('ETH_RPC_URL') and app.config.get('ETH_PRIVATE_KEY') and app.config.get('FILE_REGISTRY_ADDRESS'))
+        version_registry_enabled = bool(app.config.get('ETH_RPC_URL') and app.config.get('ETH_PRIVATE_KEY') and app.config.get('FILE_VERSION_REGISTRY_ADDRESS'))
         ipfs_available = False
         ipfs_version = None
         ipfs_error = None
@@ -100,6 +107,7 @@ def create_app() -> Flask:
             'ipfs_available': ipfs_available,
             'ipfs_version': ipfs_version,
             'anchoring_enabled': anchoring_enabled,
+            'version_registry_enabled': version_registry_enabled,
             'ipfs_error': ipfs_error,
         }
         mode = 'off-chain'

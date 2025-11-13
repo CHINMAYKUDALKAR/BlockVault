@@ -8,7 +8,7 @@
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_DIR="$SCRIPT_DIR"
-FRONTEND_DIR="$PROJECT_DIR/blockvault-frontend"
+FRONTEND_DIR="$PROJECT_DIR/blockvault-frontend-new"
 VENV_DIR="$PROJECT_DIR/venv"
 
 # Colors for output
@@ -50,19 +50,20 @@ cleanup() {
     echo ""
     print_info "Shutting down services..."
     
-    # Kill all background jobs started by this script
-    kill $(jobs -p) 2>/dev/null
-    
-    # Also kill processes on ports 3000 and 5000
-    lsof -ti:3000 | xargs kill -9 2>/dev/null
-    lsof -ti:5000 | xargs kill -9 2>/dev/null
+    # Kill background jobs started by this script (gracefully first)
+    if [ -n "$(jobs -p)" ]; then
+        print_info "Stopping background jobs..."
+        kill $(jobs -p) 2>/dev/null
+        sleep 2
+        # Force kill if still running
+        kill -9 $(jobs -p) 2>/dev/null
+    fi
     
     print_success "All services stopped"
-    exit 0
 }
 
-# Set up signal handlers
-trap cleanup SIGINT SIGTERM EXIT
+# Set up signal handlers (removed EXIT to prevent cleanup on normal script end)
+trap cleanup SIGINT SIGTERM
 
 # Function to check if a port is in use
 check_port() {
@@ -173,13 +174,14 @@ wait_for_service "http://localhost:5000" "Backend (Flask)"
 # START FRONTEND
 # ===============================================
 
-print_info "Starting React Frontend..."
+print_info "Starting Vite Frontend..."
 echo ""
 
 cd "$FRONTEND_DIR"
 
-# Start frontend in background (suppress browser auto-open)
-BROWSER=none npm start > frontend.log 2>&1 &
+# Start frontend in background
+# Auto-open browser unless BROWSER=none is set
+npm run dev > frontend.log 2>&1 &
 FRONTEND_PID=$!
 
 print_info "Frontend PID: $FRONTEND_PID"
@@ -188,6 +190,17 @@ print_info "Frontend logs: $FRONTEND_DIR/frontend.log"
 # Wait for frontend to be ready
 wait_for_service "http://localhost:3000" "Frontend (React)"
 
+# Auto-open browser after services are ready
+if command -v open &> /dev/null; then
+    print_info "Opening browser..."
+    sleep 2
+    open http://localhost:3000
+elif command -v xdg-open &> /dev/null; then
+    print_info "Opening browser..."
+    sleep 2
+    xdg-open http://localhost:3000
+fi
+
 # ===============================================
 # SUCCESS MESSAGE
 # ===============================================
@@ -195,12 +208,12 @@ wait_for_service "http://localhost:3000" "Frontend (React)"
 echo ""
 echo -e "${GREEN}"
 echo "╔════════════════════════════════════════════════════════╗"
-echo "║          🎉 BlockVault Started Successfully! 🎉        ║"
+echo "║          🎉 BlockVault v2.0 Started Successfully! 🎉   ║"
 echo "╚════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 echo ""
-echo -e "${CYAN}📱 Frontend:${NC}  http://localhost:3000"
-echo -e "${CYAN}🔧 Backend:${NC}   http://localhost:5000"
+echo -e "${CYAN}📱 Frontend (Vite):${NC}  http://localhost:3000"
+echo -e "${CYAN}🔧 Backend:${NC}      http://localhost:5000"
 echo ""
 echo -e "${YELLOW}📊 Process Information:${NC}"
 echo "   Backend PID:  $BACKEND_PID"
@@ -212,7 +225,7 @@ echo "   Frontend: $FRONTEND_DIR/frontend.log"
 echo ""
 echo -e "${YELLOW}🔍 Useful Commands:${NC}"
 echo "   View backend logs:  tail -f backend.log"
-echo "   View frontend logs: tail -f blockvault-frontend/frontend.log"
+echo "   View frontend logs: tail -f blockvault-frontend-new/frontend.log"
 echo "   Check status:       lsof -i :3000 -i :5000"
 echo ""
 echo -e "${GREEN}✨ Ready to use! Open http://localhost:3000 in your browser${NC}"

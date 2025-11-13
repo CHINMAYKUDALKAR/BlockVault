@@ -23,6 +23,7 @@ class Config:
     role_registry_address: str | None = None
     file_access_contract: str | None = None
     file_registry_address: str | None = None  # new on-chain file registry (optional)
+    file_version_registry_address: str | None = None
     cors_allowed_origins: str | None = None
     app_name: str = "BlockVault"
     access_manager_address: str | None = None  # deprecated (kept for backward compatibility, always None)
@@ -45,6 +46,7 @@ def load_config() -> Config:
     file_access_contract = None
     cors_allowed_origins = os.getenv("CORS_ALLOWED_ORIGINS")
     file_registry_address = os.getenv("FILE_REGISTRY_ADDRESS")
+    file_version_registry_address = os.getenv("FILE_VERSION_REGISTRY_ADDRESS")
     access_manager_address = None  # removed feature; ignore env/manifest
     return Config(
         env=env,
@@ -62,6 +64,7 @@ def load_config() -> Config:
         role_registry_address=role_registry_address,
         file_access_contract=file_access_contract,
         file_registry_address=file_registry_address,
+        file_version_registry_address=file_version_registry_address,
         cors_allowed_origins=cors_allowed_origins,
         access_manager_address=access_manager_address,
     )

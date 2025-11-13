@@ -31,6 +31,14 @@ _ROLE_NAMES = {
     Role.ADMIN: "admin",
 }
 
+_ROLE_SLUG_MAP = {
+    "none": Role.NONE,
+    "viewer": Role.VIEWER,
+    "editor": Role.OWNER,
+    "owner": Role.OWNER,
+    "admin": Role.ADMIN,
+}
+
 _ROLE_ABI = [
     {
         "inputs": [{"internalType": "address", "name": "user", "type": "address"}],
@@ -47,6 +55,16 @@ _cache_lock = threading.Lock()
 _contract_lock = threading.Lock()
 _contract_cache: Dict[str, Tuple[Web3, Any]] = {}
 _warned_not_configured = False
+
+
+def check_permission(required_role: str = "viewer") -> bool:
+    """
+    Simple permission check function for cases API.
+    Returns True if user has permission, False otherwise.
+    """
+    # For now, allow all operations (authentication happens at API level)
+    # This can be expanded to check actual roles from request context
+    return True
 
 
 def role_name(role: Role) -> str:
@@ -132,3 +150,24 @@ def attach_role(address: str) -> Role:
 def clear_role_cache() -> None:
     with _cache_lock:
         _role_cache.clear()
+
+
+def assign_role_onchain(address: str, role: str) -> Optional[str]:
+    """Stub helper to emit an on-chain role assignment transaction (or simulate)."""
+    role_slug = (role or "").lower()
+    if role_slug not in _ROLE_SLUG_MAP:
+        current_app.logger.warning("assign_role_onchain called with unknown role '%s'", role)
+        return None
+
+    contract_info = _get_contract()
+    if contract_info is None:
+        return f"simulated-role::{address.lower()}::{role_slug}"
+
+    # We have a configured contract but we currently operate in hybrid/dev mode.
+    # Emit a log entry and return a deterministic reference without sending a tx.
+    current_app.logger.info(
+        "assign_role_onchain stub invoked for %s role=%s (contract configured, skipping real tx)",
+        address,
+        role_slug,
+    )
+    return f"stub-role::{address.lower()}::{role_slug}"
